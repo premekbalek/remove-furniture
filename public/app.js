@@ -10,6 +10,7 @@ const resultFrame = document.querySelector("#resultFrame");
 const statusText = document.querySelector("#statusText");
 const resultPlaceholder = document.querySelector("#resultPlaceholder");
 const spinner = document.querySelector("#spinner");
+const supportedUploadTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 let selectedFile = null;
 let originalDataUrl = null;
@@ -24,14 +25,18 @@ async function handleFileSelection(input) {
   if (!file) return;
 
   resetResult();
-  selectedFile = file;
-  originalDataUrl = await readAsDataUrl(file);
+  statusText.textContent = "Nacitam fotku...";
+
+  const normalized = await normalizeSelectedImage(file);
+  selectedFile = normalized.file;
+  originalDataUrl = normalized.dataUrl;
   originalSize = await getImageSize(originalDataUrl);
 
   originalImage.src = originalDataUrl;
   originalFrame.classList.remove("empty");
   removeButton.disabled = false;
-  statusText.textContent = `${file.name} | ${originalSize.width} x ${originalSize.height}px`;
+  const conversionNote = normalized.converted ? " | prevedeno na JPEG pro zpracovani" : "";
+  statusText.textContent = `${selectedFile.name} | ${originalSize.width} x ${originalSize.height}px${conversionNote}`;
 }
 
 removeButton.addEventListener("click", async () => {
@@ -113,10 +118,44 @@ function readAsDataUrl(file) {
   });
 }
 
+async function normalizeSelectedImage(file) {
+  const dataUrl = await readAsDataUrl(file);
+  if (supportedUploadTypes.has(file.type)) {
+    return { file, dataUrl, converted: false };
+  }
+
+  const jpegDataUrl = await convertImageDataUrlToJpeg(dataUrl);
+  const jpegName = replaceExtension(file.name || "mistnost", "jpg");
+  return {
+    file: dataUrlToFile(jpegDataUrl, jpegName, "image/jpeg"),
+    dataUrl: jpegDataUrl,
+    converted: true
+  };
+}
+
+async function convertImageDataUrlToJpeg(dataUrl) {
+  const image = await loadImage(dataUrl);
+  const canvas = document.createElement("canvas");
+  canvas.width = image.naturalWidth;
+  canvas.height = image.naturalHeight;
+
+  const context = canvas.getContext("2d");
+  context.drawImage(image, 0, 0);
+
+  return canvas.toDataURL("image/jpeg", 0.96);
+}
+
 function getImageSize(src) {
+  return loadImage(src).then((image) => ({
+    width: image.naturalWidth,
+    height: image.naturalHeight
+  }));
+}
+
+function loadImage(src) {
   return new Promise((resolve, reject) => {
     const image = new Image();
-    image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
+    image.onload = () => resolve(image);
     image.onerror = () => reject(new Error("Obrazek se nepodarilo zobrazit."));
     image.src = src;
   });
@@ -152,4 +191,9 @@ function dataUrlToFile(dataUrl, fileName, mimeType) {
   }
 
   return new File([bytes], fileName, { type: detectedMime });
+}
+
+function replaceExtension(fileName, extension) {
+  const baseName = fileName.replace(/\.[^.]+$/, "") || "mistnost";
+  return `${baseName}.${extension}`;
 }
