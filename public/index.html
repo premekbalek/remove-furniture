@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="cs">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Vymazani nabytku</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="workspace" aria-label="Vymazani nabytku z fotky">
+        <div class="topbar">
+          <div>
+            <h1>Vymazani nabytku</h1>
+            <p id="statusText">Nahrajte fotku mistnosti z telefonu nebo pocitace.</p>
+          </div>
+          <label class="file-button">
+            <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp" capture="environment">
+            <span>Nahrat fotku</span>
+          </label>
+        </div>
+
+        <div class="actions">
+          <button id="removeButton" class="primary" type="button" disabled>Vymazat nabytek</button>
+          <a id="downloadButton" class="download disabled" href="#" download>Stahnout vysledek</a>
+        </div>
+
+        <div class="preview-grid">
+          <figure class="preview">
+            <figcaption>Puvodni fotka</figcaption>
+            <div class="image-frame empty" id="originalFrame">
+              <img id="originalImage" alt="Puvodni fotka mistnosti">
+              <span>Neni nahrana fotka</span>
+            </div>
+          </figure>
+
+          <figure class="preview">
+            <figcaption>Bez nabytku</figcaption>
+            <div class="image-frame empty" id="resultFrame">
+              <img id="resultImage" alt="Fotka mistnosti bez nabytku">
+              <div id="spinner" class="spinner" hidden></div>
+              <span id="resultPlaceholder">Vysledek se zobrazi tady</span>
+            </div>
+          </figure>
+        </div>
+      </section>
+    </main>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
