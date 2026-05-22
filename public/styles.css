@@ -79,6 +79,14 @@ p {
   pointer-events: none;
 }
 
+.upload-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .file-button span,
 button,
 .download {
@@ -215,6 +223,12 @@ figcaption {
   .actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .upload-actions {
+    align-items: stretch;
+    flex-direction: column;
+    justify-content: stretch;
   }
 
   h1 {

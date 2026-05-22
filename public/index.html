@@ -14,10 +14,16 @@
             <h1>Vymazani nabytku</h1>
             <p id="statusText">Nahrajte fotku mistnosti z telefonu nebo pocitace.</p>
           </div>
-          <label class="file-button">
-            <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp" capture="environment">
-            <span>Nahrat fotku</span>
-          </label>
+          <div class="upload-actions">
+            <label class="file-button">
+              <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp">
+              <span>Vybrat fotku</span>
+            </label>
+            <label class="file-button">
+              <input id="cameraInput" type="file" accept="image/png,image/jpeg,image/webp" capture="environment">
+              <span>Vyfotit</span>
+            </label>
+          </div>
         </div>
 
         <div class="actions">

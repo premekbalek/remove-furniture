@@ -1,4 +1,5 @@
 const fileInput = document.querySelector("#fileInput");
+const cameraInput = document.querySelector("#cameraInput");
 const removeButton = document.querySelector("#removeButton");
 const downloadButton = document.querySelector("#downloadButton");
 const originalImage = document.querySelector("#originalImage");
@@ -13,8 +14,11 @@ let selectedFile = null;
 let originalDataUrl = null;
 let originalSize = null;
 
-fileInput.addEventListener("change", async () => {
-  const [file] = fileInput.files;
+fileInput.addEventListener("change", () => handleFileSelection(fileInput));
+cameraInput.addEventListener("change", () => handleFileSelection(cameraInput));
+
+async function handleFileSelection(input) {
+  const [file] = input.files;
   if (!file) return;
 
   resetResult();
@@ -26,7 +30,7 @@ fileInput.addEventListener("change", async () => {
   originalFrame.classList.remove("empty");
   removeButton.disabled = false;
   statusText.textContent = `${file.name} | ${originalSize.width} x ${originalSize.height}px`;
-});
+}
 
 removeButton.addEventListener("click", async () => {
   if (!selectedFile || !originalDataUrl || !originalSize) return;
@@ -80,6 +84,7 @@ function setBusy(isBusy) {
   spinner.hidden = !isBusy;
   removeButton.disabled = isBusy || !selectedFile;
   fileInput.disabled = isBusy;
+  cameraInput.disabled = isBusy;
 }
 
 function resetResult() {
