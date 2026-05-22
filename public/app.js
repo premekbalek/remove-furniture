@@ -10,7 +10,6 @@ const resultFrame = document.querySelector("#resultFrame");
 const statusText = document.querySelector("#statusText");
 const resultPlaceholder = document.querySelector("#resultPlaceholder");
 const spinner = document.querySelector("#spinner");
-const supportedUploadTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 let selectedFile = null;
 let originalDataUrl = null;
@@ -35,7 +34,7 @@ async function handleFileSelection(input) {
   originalImage.src = originalDataUrl;
   originalFrame.classList.remove("empty");
   removeButton.disabled = false;
-  const conversionNote = normalized.converted ? " | prevedeno na JPEG pro zpracovani" : "";
+  const conversionNote = normalized.converted ? " | prevedeno na JPEG pro zpracovani" : " | pripraveno pro zpracovani";
   statusText.textContent = `${selectedFile.name} | ${originalSize.width} x ${originalSize.height}px${conversionNote}`;
 }
 
@@ -120,16 +119,13 @@ function readAsDataUrl(file) {
 
 async function normalizeSelectedImage(file) {
   const dataUrl = await readAsDataUrl(file);
-  if (supportedUploadTypes.has(file.type)) {
-    return { file, dataUrl, converted: false };
-  }
 
   const jpegDataUrl = await convertImageDataUrlToJpeg(dataUrl);
   const jpegName = replaceExtension(file.name || "mistnost", "jpg");
   return {
     file: dataUrlToFile(jpegDataUrl, jpegName, "image/jpeg"),
     dataUrl: jpegDataUrl,
-    converted: true
+    converted: file.type !== "image/jpeg"
   };
 }
 
@@ -140,6 +136,8 @@ async function convertImageDataUrlToJpeg(dataUrl) {
   canvas.height = image.naturalHeight;
 
   const context = canvas.getContext("2d");
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
   context.drawImage(image, 0, 0);
 
   return canvas.toDataURL("image/jpeg", 0.96);
