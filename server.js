@@ -17,6 +17,16 @@ const maxOutputEdge = readPositiveInteger(process.env.OPENAI_MAX_OUTPUT_EDGE, 20
 const maxOutputPixels = readPositiveInteger(process.env.OPENAI_MAX_OUTPUT_PIXELS, 3686400);
 const maxJsonBytes = 75 * 1024 * 1024;
 const openAiEditUrl = "https://api.openai.com/v1/images/edits";
+const furnitureCategories = new Map([
+  ["bed", "beds, bed frames, mattresses and their bedding"],
+  ["seating", "sofas, couches, armchairs and lounge chairs"],
+  ["table", "dining tables, desks and coffee tables"],
+  ["chairs", "dining chairs, desk chairs and stools"],
+  ["storage", "freestanding wardrobes, dressers and cabinets"],
+  ["tv_unit", "televisions and freestanding TV stands"],
+  ["shelves", "freestanding shelving units and bookcases"],
+  ["rug", "rugs and loose carpets"]
+]);
 
 const mimeByExt = new Map([
   [".html", "text/html; charset=utf-8"],
@@ -82,15 +92,12 @@ async function handleRemoveFurniture(req, res) {
   const size = supportedImageSize(Number(width), Number(height));
   const extension = outputFormat === "jpeg" ? "jpg" : outputFormat;
   const safeName = sanitizeFileName(fileName || `mistnost.${extension}`);
+  const prompt = buildEditPrompt(payload);
 
-  const prompt = [
-    "Photorealistic real estate photo edit.",
-    "Remove all furniture and movable household items from this room.",
-    "Reconstruct the empty floor, walls, windows, doors, trim, fixtures, lighting, shadows, and perspective naturally.",
-    "Preserve the original camera angle, room layout, architecture, materials, colors, exposure, contrast, and overall image realism.",
-    "Do not add new furniture, decor, text, logos, people, watermarks, or unrealistic objects.",
-    "Return only the same room as an empty, unfurnished room."
-  ].join(" ");
+  if (!prompt) {
+    sendJson(res, 400, { error: "Vyberte alespon jeden kus nabytku k odstraneni." });
+    return;
+  }
 
   const form = new FormData();
   form.append("model", imageModel);
@@ -237,6 +244,38 @@ function formatFromMime(mimeType) {
   if (mimeType === "image/png") return "png";
   if (mimeType === "image/webp") return "webp";
   return null;
+}
+
+function buildEditPrompt(payload) {
+  const common = [
+    "Photorealistic real estate photo edit.",
+    "Always preserve any kitchen cabinetry, countertops, backsplash, integrated appliances, sink, tap and fixed kitchen island exactly as present in the original image.",
+    "Preserve the original camera angle, room layout, architecture, built-in fixtures, materials, colors, exposure, contrast and overall image realism.",
+    "Reconstruct any newly visible floor, walls, trim, lighting and shadows naturally.",
+    "Do not add new furniture, decor, text, logos, people, watermarks or unrealistic objects."
+  ];
+
+  if (payload.removalMode !== "selected") {
+    return [
+      ...common,
+      "Remove all movable furniture and loose household furnishing or decor items from the room, except for the preserved kitchen elements.",
+      "Return the same room empty of movable furniture while keeping the kitchen intact."
+    ].join(" ");
+  }
+
+  const categories = Array.isArray(payload.removeCategories)
+    ? payload.removeCategories.filter((category) => furnitureCategories.has(category))
+    : [];
+  const selected = [...new Set(categories)].map((category) => furnitureCategories.get(category));
+
+  if (!selected.length) return null;
+
+  return [
+    ...common,
+    `Remove only these furniture categories when present: ${selected.join("; ")}.`,
+    "Keep all other unselected furniture and small decorative objects unchanged.",
+    "Return the same room with only the specified furniture removed."
+  ].join(" ");
 }
 
 function supportedImageSize(width, height) {

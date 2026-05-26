@@ -32,6 +32,34 @@
           <a id="downloadButton" class="download disabled" href="#" download>Stahnout vysledek</a>
         </div>
 
+        <section class="edit-options" aria-label="Rozsah upravy">
+          <div class="option-header">
+            <h2>Odstranit</h2>
+            <p>Kuchynska linka zustane zachovana.</p>
+          </div>
+          <div class="mode-switch" role="radiogroup" aria-label="Rozsah odstraneni">
+            <label>
+              <input type="radio" name="removalMode" value="all" checked>
+              <span>Vsechen volny nabytek</span>
+            </label>
+            <label>
+              <input type="radio" name="removalMode" value="selected">
+              <span>Vybrat kusy</span>
+            </label>
+          </div>
+          <fieldset id="categoryPanel" class="category-panel" hidden>
+            <legend>Kusy k odstraneni</legend>
+            <label><input type="checkbox" name="removeCategory" value="bed" checked> Postel</label>
+            <label><input type="checkbox" name="removeCategory" value="seating" checked> Gauc a kresla</label>
+            <label><input type="checkbox" name="removeCategory" value="table" checked> Stul</label>
+            <label><input type="checkbox" name="removeCategory" value="chairs" checked> Zidle</label>
+            <label><input type="checkbox" name="removeCategory" value="storage" checked> Skrine a komody</label>
+            <label><input type="checkbox" name="removeCategory" value="tv_unit" checked> TV a stolek</label>
+            <label><input type="checkbox" name="removeCategory" value="shelves" checked> Regaly a police</label>
+            <label><input type="checkbox" name="removeCategory" value="rug" checked> Koberec</label>
+          </fieldset>
+        </section>
+
         <div class="preview-grid">
           <figure class="preview">
             <figcaption>Puvodni fotka</figcaption>
@@ -42,7 +70,7 @@
           </figure>
 
           <figure class="preview">
-            <figcaption>Bez nabytku</figcaption>
+            <figcaption>Upravena fotka</figcaption>
             <div class="image-frame empty" id="resultFrame">
               <img id="resultImage" alt="Fotka mistnosti bez nabytku">
               <div id="spinner" class="spinner" hidden></div>

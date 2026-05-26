@@ -10,6 +10,9 @@ const resultFrame = document.querySelector("#resultFrame");
 const statusText = document.querySelector("#statusText");
 const resultPlaceholder = document.querySelector("#resultPlaceholder");
 const spinner = document.querySelector("#spinner");
+const removalModes = document.querySelectorAll('input[name="removalMode"]');
+const categoryPanel = document.querySelector("#categoryPanel");
+const categoryInputs = document.querySelectorAll('input[name="removeCategory"]');
 
 let selectedFile = null;
 let originalDataUrl = null;
@@ -18,6 +21,8 @@ let resultFile = null;
 
 fileInput.addEventListener("change", () => handleFileSelection(fileInput));
 cameraInput.addEventListener("change", () => handleFileSelection(cameraInput));
+removalModes.forEach((input) => input.addEventListener("change", updateRemovalControls));
+categoryInputs.forEach((input) => input.addEventListener("change", updateRemoveButton));
 
 async function handleFileSelection(input) {
   const [file] = input.files;
@@ -33,7 +38,7 @@ async function handleFileSelection(input) {
 
   originalImage.src = originalDataUrl;
   originalFrame.classList.remove("empty");
-  removeButton.disabled = false;
+  updateRemoveButton();
   const conversionNote = normalized.converted ? " | prevedeno na JPEG pro zpracovani" : " | pripraveno pro zpracovani";
   statusText.textContent = `${selectedFile.name} | ${originalSize.width} x ${originalSize.height}px${conversionNote}`;
 }
@@ -56,7 +61,9 @@ removeButton.addEventListener("click", async () => {
         mimeType: selectedFile.type,
         fileName: selectedFile.name,
         width: originalSize.width,
-        height: originalSize.height
+        height: originalSize.height,
+        removalMode: selectedRemovalMode(),
+        removeCategories: selectedCategories()
       })
     });
 
@@ -90,10 +97,12 @@ removeButton.addEventListener("click", async () => {
 
 function setBusy(isBusy) {
   spinner.hidden = !isBusy;
-  removeButton.disabled = isBusy || !selectedFile;
+  removeButton.disabled = isBusy || !canRequestEdit();
   shareButton.disabled = isBusy || !canShareResult(resultFile);
   fileInput.disabled = isBusy;
   cameraInput.disabled = isBusy;
+  removalModes.forEach((input) => { input.disabled = isBusy; });
+  categoryInputs.forEach((input) => { input.disabled = isBusy; });
 }
 
 function resetResult() {
@@ -195,3 +204,28 @@ function replaceExtension(fileName, extension) {
   const baseName = fileName.replace(/\.[^.]+$/, "") || "mistnost";
   return `${baseName}.${extension}`;
 }
+
+function updateRemovalControls() {
+  categoryPanel.hidden = selectedRemovalMode() !== "selected";
+  updateRemoveButton();
+}
+
+function updateRemoveButton() {
+  removeButton.disabled = !canRequestEdit();
+}
+
+function selectedRemovalMode() {
+  return document.querySelector('input[name="removalMode"]:checked')?.value || "all";
+}
+
+function selectedCategories() {
+  return Array.from(categoryInputs)
+    .filter((input) => input.checked)
+    .map((input) => input.value);
+}
+
+function canRequestEdit() {
+  return Boolean(selectedFile) && (selectedRemovalMode() === "all" || selectedCategories().length > 0);
+}
+
+updateRemovalControls();

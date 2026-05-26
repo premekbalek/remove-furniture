@@ -140,6 +140,108 @@ button:disabled,
   gap: 12px;
 }
 
+.edit-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 22px;
+  padding: 14px 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.option-header {
+  min-width: 188px;
+}
+
+.option-header h2 {
+  margin: 0 0 4px;
+  font-size: 16px;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+.option-header p {
+  font-size: 13px;
+}
+
+.mode-switch {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(170px, 1fr));
+  padding: 3px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #eef1ee;
+}
+
+.mode-switch input {
+  position: absolute;
+  opacity: 0;
+}
+
+.mode-switch span {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.mode-switch input:checked + span {
+  background: var(--panel);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.mode-switch input:focus-visible + span {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.category-panel {
+  flex-basis: 100%;
+  margin: 0;
+  padding: 12px 0 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: repeat(4, minmax(140px, 1fr));
+  gap: 12px 18px;
+}
+
+.category-panel[hidden] {
+  display: none;
+}
+
+.category-panel legend {
+  float: left;
+  width: 100%;
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.category-panel label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 34px;
+  font-size: 15px;
+}
+
+.category-panel input {
+  inline-size: 18px;
+  block-size: 18px;
+  accent-color: var(--accent);
+}
+
 .preview-grid {
   flex: 1;
   display: grid;
@@ -237,6 +339,19 @@ figcaption {
 
   .preview-grid {
     grid-template-columns: 1fr;
+  }
+
+  .edit-options {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .mode-switch {
+    grid-template-columns: 1fr;
+  }
+
+  .category-panel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .image-frame {
