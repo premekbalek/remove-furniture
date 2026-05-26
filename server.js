@@ -104,11 +104,6 @@ async function handleRemoveFurniture(req, res) {
   const safeName = sanitizeFileName(fileName || `mistnost.${extension}`);
   const prompt = buildEditPrompt(payload);
 
-  if (!prompt) {
-    sendJson(res, 400, { error: "Vyberte alespon jeden kus nabytku k odstraneni." });
-    return;
-  }
-
   const form = new FormData();
   form.append("model", imageModel);
   form.append("prompt", prompt);
@@ -346,7 +341,12 @@ function buildEditPrompt(payload) {
     "Do not add new furniture, decor, text, logos, people, watermarks or unrealistic objects."
   ];
 
-  if (payload.removalMode !== "selected") {
+  const categories = Array.isArray(payload.keepCategories)
+    ? payload.keepCategories.filter((category) => furnitureCategories.has(category))
+    : [];
+  const selected = [...new Set(categories)].map((category) => furnitureCategories.get(category));
+
+  if (!selected.length) {
     return [
       ...common,
       "Remove all movable furniture and loose household furnishing or decor items from the room, except for the preserved kitchen elements.",
@@ -354,18 +354,12 @@ function buildEditPrompt(payload) {
     ].join(" ");
   }
 
-  const categories = Array.isArray(payload.removeCategories)
-    ? payload.removeCategories.filter((category) => furnitureCategories.has(category))
-    : [];
-  const selected = [...new Set(categories)].map((category) => furnitureCategories.get(category));
-
-  if (!selected.length) return null;
-
   return [
     ...common,
-    `Remove only these furniture categories when present: ${selected.join("; ")}.`,
-    "Keep all other unselected furniture and small decorative objects unchanged.",
-    "Return the same room with only the specified furniture removed."
+    `Preserve only these selected movable furniture categories when present: ${selected.join("; ")}.`,
+    "Remove all other movable furniture, freestanding items, plants, lamps, rugs, small decor, loose household objects and clutter, except for the selected preserved categories and the preserved kitchen elements.",
+    "Do not remove, redesign or alter the selected preserved furniture; keep its position, form, color and visual details as close to the original as possible.",
+    "Return the same room emptied of everything removable except the selected preserved furniture and the kitchen."
   ].join(" ");
 }
 

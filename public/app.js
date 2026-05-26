@@ -10,9 +10,7 @@ const resultFrame = document.querySelector("#resultFrame");
 const statusText = document.querySelector("#statusText");
 const resultPlaceholder = document.querySelector("#resultPlaceholder");
 const spinner = document.querySelector("#spinner");
-const removalModes = document.querySelectorAll('input[name="removalMode"]');
-const categoryPanel = document.querySelector("#categoryPanel");
-const categoryInputs = document.querySelectorAll('input[name="removeCategory"]');
+const categoryInputs = document.querySelectorAll('input[name="keepCategory"]');
 const activeJobStorageKey = "removeFurniture.activeJobId";
 const pollDelayMs = 2500;
 
@@ -23,8 +21,6 @@ let resultFile = null;
 
 fileInput.addEventListener("change", () => handleFileSelection(fileInput));
 cameraInput.addEventListener("change", () => handleFileSelection(cameraInput));
-removalModes.forEach((input) => input.addEventListener("change", updateRemovalControls));
-categoryInputs.forEach((input) => input.addEventListener("change", updateRemoveButton));
 
 async function handleFileSelection(input) {
   const [file] = input.files;
@@ -64,8 +60,7 @@ removeButton.addEventListener("click", async () => {
         fileName: selectedFile.name,
         width: originalSize.width,
         height: originalSize.height,
-        removalMode: selectedRemovalMode(),
-        removeCategories: selectedCategories()
+        keepCategories: selectedCategories()
       })
     });
 
@@ -94,7 +89,6 @@ function setBusy(isBusy) {
   shareButton.disabled = isBusy || !canShareResult(resultFile);
   fileInput.disabled = isBusy;
   cameraInput.disabled = isBusy;
-  removalModes.forEach((input) => { input.disabled = isBusy; });
   categoryInputs.forEach((input) => { input.disabled = isBusy; });
 }
 
@@ -287,17 +281,8 @@ function replaceExtension(fileName, extension) {
   return `${baseName}.${extension}`;
 }
 
-function updateRemovalControls() {
-  categoryPanel.hidden = selectedRemovalMode() !== "selected";
-  updateRemoveButton();
-}
-
 function updateRemoveButton() {
   removeButton.disabled = !canRequestEdit();
-}
-
-function selectedRemovalMode() {
-  return document.querySelector('input[name="removalMode"]:checked')?.value || "all";
 }
 
 function selectedCategories() {
@@ -307,8 +292,7 @@ function selectedCategories() {
 }
 
 function canRequestEdit() {
-  return Boolean(selectedFile) && (selectedRemovalMode() === "all" || selectedCategories().length > 0);
+  return Boolean(selectedFile);
 }
 
-updateRemovalControls();
 void resumePendingJob();
