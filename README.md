@@ -17,3 +17,5 @@ Otevrete `http://localhost:3000`.
 ## Poznamky ke kvalite
 
 Aplikace se snazi zachovat format a rozliseni vstupni fotky. Model ale vyzaduje podporovane rozmery: hrany musi byt nasobkem 16, delsi hrana muze byt maximalne 3840 px a pomer stran maximalne 3:1. Pokud fotka tyto limity nesplnuje, aplikace pouzije nejblizsi podporovany rozmer se stejnym pomerem stran.
+
+Po odeslani fotky zpracovani pokracuje na serveru i pri prepnuti tabu nebo zamknuti mobilu. Vysledek se docasne drzi pouze v pameti serveru po dobu 30 minut, maximalne pro dve hotove upravy.
