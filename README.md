@@ -16,6 +16,4 @@ Otevrete `http://localhost:3000`.
 
 ## Poznamky ke kvalite
 
-Aplikace zachovava vysokou kvalitu renderovani a format vstupni fotky. Pro webovy vystup standardne omezuje delsi hranu na 2048 px a celkovou velikost na 3 686 400 pixelu, aby negenerovala zbytecne drahe originalni rozliseni z mobilnich fotoaparatu.
-
-Limity lze zmenit pres `OPENAI_MAX_OUTPUT_EDGE` a `OPENAI_MAX_OUTPUT_PIXELS`. Model zaroven vyzaduje, aby hrany byly nasobkem 16, delsi hrana mela maximalne 3840 px a pomer stran neprekrocil 3:1.
+Aplikace se snazi zachovat format a rozliseni vstupni fotky. Model ale vyzaduje podporovane rozmery: hrany musi byt nasobkem 16, delsi hrana muze byt maximalne 3840 px a pomer stran maximalne 3:1. Pokud fotka tyto limity nesplnuje, aplikace pouzije nejblizsi podporovany rozmer se stejnym pomerem stran.

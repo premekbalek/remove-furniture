@@ -13,8 +13,6 @@ loadDotenv();
 const port = Number(process.env.PORT || 3000);
 const apiKey = process.env.OPENAI_API_KEY;
 const imageModel = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
-const maxOutputEdge = readPositiveInteger(process.env.OPENAI_MAX_OUTPUT_EDGE, 2048);
-const maxOutputPixels = readPositiveInteger(process.env.OPENAI_MAX_OUTPUT_PIXELS, 3686400);
 const maxJsonBytes = 75 * 1024 * 1024;
 const openAiEditUrl = "https://api.openai.com/v1/images/edits";
 
@@ -251,21 +249,18 @@ function normalizeToConstraints(width, height) {
   const ratio = width / height;
   let nextWidth = width;
   let nextHeight = height;
-  const apiMaxEdge = 3840;
-  const apiMaxPixels = 8294400;
-  const targetMaxEdge = Math.min(maxOutputEdge, apiMaxEdge);
-  const targetMaxPixels = Math.min(maxOutputPixels, apiMaxPixels);
+  const maxPixels = 8294400;
 
   const maxEdge = Math.max(nextWidth, nextHeight);
-  if (maxEdge > targetMaxEdge) {
-    const scale = targetMaxEdge / maxEdge;
+  if (maxEdge > 3840) {
+    const scale = 3840 / maxEdge;
     nextWidth *= scale;
     nextHeight *= scale;
   }
 
   const pixels = nextWidth * nextHeight;
-  if (pixels > targetMaxPixels) {
-    const scale = Math.sqrt(targetMaxPixels / pixels);
+  if (pixels > maxPixels) {
+    const scale = Math.sqrt(maxPixels / pixels);
     nextWidth *= scale;
     nextHeight *= scale;
   }
@@ -281,7 +276,7 @@ function normalizeToConstraints(width, height) {
   nextWidth = roundToMultiple(nextWidth, 16);
   nextHeight = roundToMultiple(nextHeight, 16);
 
-  while (nextWidth * nextHeight > targetMaxPixels) {
+  while (nextWidth * nextHeight > maxPixels) {
     if (nextWidth >= nextHeight) {
       nextWidth -= 16;
     } else {
@@ -296,8 +291,8 @@ function normalizeToConstraints(width, height) {
     nextHeight = ceilToMultiple(nextHeight * scale, 16);
   }
 
-  nextWidth = clamp(nextWidth, 16, apiMaxEdge);
-  nextHeight = clamp(nextHeight, 16, apiMaxEdge);
+  nextWidth = clamp(nextWidth, 16, 3840);
+  nextHeight = clamp(nextHeight, 16, 3840);
 
   return { width: nextWidth, height: nextHeight };
 }
@@ -308,11 +303,6 @@ function roundToMultiple(value, multiple) {
 
 function ceilToMultiple(value, multiple) {
   return Math.max(multiple, Math.ceil(value / multiple) * multiple);
-}
-
-function readPositiveInteger(value, fallback) {
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function clamp(value, min, max) {

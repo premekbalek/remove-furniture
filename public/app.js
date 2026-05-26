@@ -76,7 +76,7 @@ removeButton.addEventListener("click", async () => {
 
     const sizeNote = payload.usedOriginalSize
       ? "Rozliseni zustalo stejne."
-      : `Webovy vystup: ${payload.width} x ${payload.height}px ve vysoke kvalite.`;
+      : `Vystupni rozmer byl upraven na ${payload.width} x ${payload.height}px kvuli limitum modelu.`;
     statusText.textContent = `Hotovo. ${sizeNote}`;
   } catch (error) {
     resultFrame.classList.add("error");
