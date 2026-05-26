@@ -337,7 +337,9 @@ function buildEditPrompt(payload) {
     "Photorealistic real estate photo edit.",
     "Always preserve any kitchen cabinetry, countertops, backsplash, integrated appliances, sink, tap and fixed kitchen island exactly as present in the original image.",
     "Preserve the original camera angle, room layout, architecture, built-in fixtures, materials, colors, exposure, contrast and overall image realism.",
-    "Reconstruct any newly visible floor, walls, trim, lighting and shadows naturally.",
+    "Do not alter any floor surface that is already visible in the input image: preserve its exact material, plank or tile pattern, direction, plank width, seams, color, texture, wear, reflections and perspective.",
+    "Where removed furniture or rugs reveal hidden floor, extend the nearest visible original flooring seamlessly with the same material, plank or tile direction, scale, seam alignment, color and perspective; never redesign or replace the floor.",
+    "Reconstruct only newly revealed hidden areas of floor, walls and trim, together with necessary lighting and shadows.",
     "Do not add new furniture, decor, text, logos, people, watermarks or unrealistic objects."
   ];
 
