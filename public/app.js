@@ -10,7 +10,10 @@ const resultFrame = document.querySelector("#resultFrame");
 const statusText = document.querySelector("#statusText");
 const resultPlaceholder = document.querySelector("#resultPlaceholder");
 const spinner = document.querySelector("#spinner");
-const categoryInputs = document.querySelectorAll('input[name="keepCategory"]');
+const chatThread = document.querySelector("#chatThread");
+const instructionForm = document.querySelector("#instructionForm");
+const instructionInput = document.querySelector("#instructionInput");
+const instructionButton = document.querySelector("#instructionButton");
 const activeJobStorageKey = "removeFurniture.activeJobId";
 const pollDelayMs = 2500;
 
@@ -18,15 +21,18 @@ let selectedFile = null;
 let originalDataUrl = null;
 let originalSize = null;
 let resultFile = null;
+let instructionHistory = [];
 
 fileInput.addEventListener("change", () => handleFileSelection(fileInput));
 cameraInput.addEventListener("change", () => handleFileSelection(cameraInput));
+instructionInput.addEventListener("input", updateActionButtons);
 
 async function handleFileSelection(input) {
   const [file] = input.files;
   if (!file) return;
 
   resetResult();
+  resetConversation();
   statusText.textContent = "Nacitam fotku...";
 
   const normalized = await normalizeSelectedImage(file);
@@ -36,12 +42,33 @@ async function handleFileSelection(input) {
 
   originalImage.src = originalDataUrl;
   originalFrame.classList.remove("empty");
-  updateRemoveButton();
+  updateActionButtons();
   const conversionNote = normalized.converted ? " | prevedeno na JPEG pro zpracovani" : " | pripraveno pro zpracovani";
   statusText.textContent = `${selectedFile.name} | ${originalSize.width} x ${originalSize.height}px${conversionNote}`;
 }
 
-removeButton.addEventListener("click", async () => {
+removeButton.addEventListener("click", () => {
+  submitInstruction("Odstran vsechen pohyblivy nabytek a volne predmety. Nic krome kuchynske linky neponechavej.");
+});
+
+instructionForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  submitInstruction(instructionInput.value);
+});
+
+function submitInstruction(value) {
+  if (!selectedFile || !originalDataUrl || !originalSize) return;
+  const instruction = value.trim();
+  if (!instruction) return;
+
+  instructionHistory.push(instruction);
+  appendChatMessage("user", instruction);
+  instructionInput.value = "";
+  updateActionButtons();
+  void requestEdit();
+}
+
+async function requestEdit() {
   if (!selectedFile || !originalDataUrl || !originalSize) return;
 
   setBusy(true);
@@ -60,11 +87,11 @@ removeButton.addEventListener("click", async () => {
         fileName: selectedFile.name,
         width: originalSize.width,
         height: originalSize.height,
-        keepCategories: selectedCategories()
+        instructions: instructionHistory
       })
     });
 
-    const payload = await response.json();
+    const payload = await readJsonPayload(response);
     if (!response.ok) {
       throw new Error(payload.error || "Uprava fotky se nepodarila.");
     }
@@ -81,15 +108,16 @@ removeButton.addEventListener("click", async () => {
   } finally {
     setBusy(false);
   }
-});
+}
 
 function setBusy(isBusy) {
   spinner.hidden = !isBusy;
   removeButton.disabled = isBusy || !canRequestEdit();
+  instructionInput.disabled = isBusy;
+  instructionButton.disabled = isBusy || !canSubmitInstruction();
   shareButton.disabled = isBusy || !canShareResult(resultFile);
   fileInput.disabled = isBusy;
   cameraInput.disabled = isBusy;
-  categoryInputs.forEach((input) => { input.disabled = isBusy; });
 }
 
 function resetResult() {
@@ -123,6 +151,8 @@ function showEditResult(payload) {
   downloadButton.classList.remove("disabled");
   resultFile = dataUrlToFile(payload.imageData, downloadButton.download, payload.mimeType);
   shareButton.disabled = !canShareResult(resultFile);
+  instructionButton.textContent = "Opravit vysledek";
+  appendChatMessage("assistant", "Uprava je hotova. Pokud neco nesedi, napiste co mam opravit.");
 
   const sizeNote = payload.usedOriginalSize
     ? "Rozliseni zustalo stejne."
@@ -151,7 +181,7 @@ async function pollEditJob(jobId) {
       continue;
     }
 
-    const payload = await response.json();
+    const payload = await readJsonPayload(response);
     if (!response.ok) {
       localStorage.removeItem(activeJobStorageKey);
       throw new Error(payload.error || "Stav zpracovani neni dostupny.");
@@ -244,6 +274,15 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function readJsonPayload(response) {
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error("Server nevratil platnou odpoved. Zkuste upravu znovu za chvili.");
+  }
+}
+
 shareButton.addEventListener("click", async () => {
   if (!resultFile || !canShareResult(resultFile)) return;
 
@@ -281,18 +320,33 @@ function replaceExtension(fileName, extension) {
   return `${baseName}.${extension}`;
 }
 
-function updateRemoveButton() {
+function updateActionButtons() {
   removeButton.disabled = !canRequestEdit();
+  instructionButton.disabled = !canSubmitInstruction();
 }
 
-function selectedCategories() {
-  return Array.from(categoryInputs)
-    .filter((input) => input.checked)
-    .map((input) => input.value);
+function resetConversation() {
+  instructionHistory = [];
+  instructionInput.value = "";
+  instructionButton.textContent = "Upravit podle zadani";
+  chatThread.replaceChildren();
+  appendChatMessage("assistant", 'Co ma zustat? Napiste napriklad "Nech gauc". Vse ostatni odstranim.');
+}
+
+function appendChatMessage(role, text) {
+  const message = document.createElement("p");
+  message.className = `chat-message ${role}`;
+  message.textContent = text;
+  chatThread.append(message);
+  chatThread.scrollTop = chatThread.scrollHeight;
 }
 
 function canRequestEdit() {
   return Boolean(selectedFile);
+}
+
+function canSubmitInstruction() {
+  return Boolean(selectedFile && instructionInput.value.trim());
 }
 
 void resumePendingJob();

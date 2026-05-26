@@ -26,7 +26,8 @@ body {
 
 button,
 a,
-input {
+input,
+textarea {
   font: inherit;
 }
 
@@ -140,19 +141,14 @@ button:disabled,
   gap: 12px;
 }
 
-.edit-options {
+.edit-chat {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 16px 22px;
+  flex-direction: column;
+  gap: 14px;
   padding: 14px 18px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
-}
-
-.option-header {
-  flex-basis: 100%;
 }
 
 .option-header h2 {
@@ -166,43 +162,66 @@ button:disabled,
   font-size: 13px;
 }
 
-.category-panel {
-  flex-basis: 100%;
-  margin: 0;
-  padding: 12px 0 0;
-  border: 0;
+.chat-thread {
+  min-height: 66px;
+  max-height: 190px;
+  overflow-y: auto;
+  padding: 12px;
   border-top: 1px solid var(--line);
-  display: grid;
-  grid-template-columns: repeat(4, minmax(140px, 1fr));
-  gap: 12px 18px;
-}
-
-.category-panel[hidden] {
-  display: none;
-}
-
-.category-panel legend {
-  float: left;
-  width: 100%;
-  margin-bottom: 12px;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.category-panel label {
+  border-bottom: 1px solid var(--line);
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 9px;
-  min-height: 34px;
-  font-size: 15px;
 }
 
-.category-panel input {
-  inline-size: 18px;
-  block-size: 18px;
-  accent-color: var(--accent);
+.chat-message {
+  max-width: min(84%, 620px);
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: #eef1ee;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.chat-message.user {
+  align-self: flex-end;
+  background: var(--accent-soft);
+}
+
+.chat-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.chat-composer textarea {
+  flex: 1;
+  min-height: 52px;
+  max-height: 132px;
+  resize: vertical;
+  padding: 12px 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--panel);
+}
+
+.chat-composer textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.visually-hidden {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .preview-grid {
@@ -304,13 +323,9 @@ figcaption {
     grid-template-columns: 1fr;
   }
 
-  .edit-options {
+  .chat-composer {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .category-panel {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .image-frame {

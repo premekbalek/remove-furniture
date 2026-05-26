@@ -22,16 +22,6 @@ const openAiEditUrl = "https://api.openai.com/v1/images/edits";
 const editJobTtlMs = 60 * 60 * 1000;
 const maxStoredJobs = 10;
 const editJobs = new Map();
-const furnitureCategories = new Map([
-  ["bed", "beds, bed frames, mattresses and their bedding"],
-  ["seating", "sofas, couches, armchairs and lounge chairs"],
-  ["table", "dining tables, desks and coffee tables"],
-  ["chairs", "dining chairs, desk chairs and stools"],
-  ["storage", "freestanding wardrobes, dressers and cabinets"],
-  ["tv_unit", "televisions and freestanding TV stands"],
-  ["shelves", "freestanding shelving units and bookcases"],
-  ["rug", "rugs and loose carpets"]
-]);
 
 const mimeByExt = new Map([
   [".html", "text/html; charset=utf-8"],
@@ -342,27 +332,28 @@ function buildEditPrompt(payload) {
     "Reconstruct only newly revealed hidden areas of floor, walls and trim, together with necessary lighting and shadows.",
     "Do not add new furniture, decor, text, logos, people, watermarks or unrealistic objects."
   ];
-
-  const categories = Array.isArray(payload.keepCategories)
-    ? payload.keepCategories.filter((category) => furnitureCategories.has(category))
-    : [];
-  const selected = [...new Set(categories)].map((category) => furnitureCategories.get(category));
-
-  if (!selected.length) {
-    return [
-      ...common,
-      "Remove all movable furniture and loose household furnishing or decor items from the room, except for the preserved kitchen elements.",
-      "Return the same room empty of movable furniture while keeping the kitchen intact."
-    ].join(" ");
-  }
+  const instructions = sanitizeInstructions(payload.instructions);
 
   return [
     ...common,
-    `Preserve only these selected movable furniture categories when present: ${selected.join("; ")}.`,
-    "Remove all other movable furniture, freestanding items, plants, lamps, rugs, small decor, loose household objects and clutter, except for the selected preserved categories and the preserved kitchen elements.",
-    "Do not remove, redesign or alter the selected preserved furniture; keep its position, form, color and visual details as close to the original as possible.",
-    "Return the same room emptied of everything removable except the selected preserved furniture and the kitchen."
+    "Default goal: remove all movable furniture, freestanding items, plants, lamps, rugs, small decor, loose household objects and clutter, except for the preserved kitchen elements.",
+    "The user instructions below may specify existing movable items to preserve or remove, or defects to correct in the edited result. Later instructions override earlier conflicting instructions.",
+    "The preservation rules for kitchen elements, architecture and already visible surfaces are mandatory and override any contrary user instruction.",
+    "Preserve only an existing movable item the user explicitly asks to keep. Do not invent any item requested by the user if it is not already present in the original photo.",
+    instructions.length
+      ? `User instruction history:\n${instructions.map((instruction, index) => `${index + 1}. ${instruction}`).join("\n")}`
+      : "User instruction history: none. Apply the default goal.",
+    "Return the same room with only explicitly preserved movable items and the intact kitchen remaining."
   ].join(" ");
+}
+
+function sanitizeInstructions(value) {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .slice(-8)
+    .map((instruction) => String(instruction).replace(/\s+/g, " ").trim().slice(0, 1000))
+    .filter(Boolean);
 }
 
 function supportedImageSize(width, height) {

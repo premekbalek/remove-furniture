@@ -26,29 +26,26 @@
           </div>
         </div>
 
+        <section class="edit-chat" aria-label="Zadani upravy">
+          <div class="option-header">
+            <h2>Uprava fotky</h2>
+            <p>Kuchynska linka zustane vzdy zachovana.</p>
+          </div>
+          <div id="chatThread" class="chat-thread" aria-live="polite">
+            <p class="chat-message assistant">Co ma zustat? Napiste napriklad "Nech gauc". Vse ostatni odstranim.</p>
+          </div>
+          <form id="instructionForm" class="chat-composer">
+            <label class="visually-hidden" for="instructionInput">Instrukce k uprave fotky</label>
+            <textarea id="instructionInput" maxlength="1000" rows="2" placeholder="Napr. Nech gauc. Odstran stul a koberec."></textarea>
+            <button id="instructionButton" class="primary" type="submit" disabled>Upravit podle zadani</button>
+          </form>
+        </section>
+
         <div class="actions">
-          <button id="removeButton" class="primary" type="button" disabled>Vymazat nabytek</button>
+          <button id="removeButton" class="primary" type="button" disabled>Odstranit vse</button>
           <button id="shareButton" type="button" disabled>Sdilet / ulozit</button>
           <a id="downloadButton" class="download disabled" href="#" download>Stahnout vysledek</a>
         </div>
-
-        <section class="edit-options" aria-label="Rozsah upravy">
-          <div class="option-header">
-            <h2>Ponechat</h2>
-            <p>Bez vyberu se odstrani vse. Kuchynska linka zustane vzdy.</p>
-          </div>
-          <fieldset class="category-panel">
-            <legend>Jen zaskrtnute kusy zustanou</legend>
-            <label><input type="checkbox" name="keepCategory" value="bed"> Postel</label>
-            <label><input type="checkbox" name="keepCategory" value="seating"> Gauc a kresla</label>
-            <label><input type="checkbox" name="keepCategory" value="table"> Stul</label>
-            <label><input type="checkbox" name="keepCategory" value="chairs"> Zidle</label>
-            <label><input type="checkbox" name="keepCategory" value="storage"> Skrine a komody</label>
-            <label><input type="checkbox" name="keepCategory" value="tv_unit"> TV a stolek</label>
-            <label><input type="checkbox" name="keepCategory" value="shelves"> Regaly a police</label>
-            <label><input type="checkbox" name="keepCategory" value="rug"> Koberec</label>
-          </fieldset>
-        </section>
 
         <div class="preview-grid">
           <figure class="preview">
