@@ -325,7 +325,8 @@ function formatFromMime(mimeType) {
 function buildEditPrompt(payload) {
   const common = [
     "Photorealistic real estate photo edit.",
-    "Always preserve any kitchen cabinetry, countertops, backsplash, integrated appliances, sink, tap and fixed kitchen island exactly as present in the original image.",
+    "Preserve an actual fixed kitchen installation exactly as present only when it is clearly identifiable by food-preparation features such as a continuous countertop, backsplash, sink, tap, cooktop, oven or integrated appliance, including its connected cabinetry and fixed island.",
+    "A freestanding or living-room wall unit, display cabinet, vitrine, sideboard, bookcase, wardrobe, dresser or storage cabinet is not a kitchen, even if its wooden appearance resembles kitchen cabinetry. Remove it unless the user explicitly asks to preserve it.",
     "Preserve the original camera angle, room layout, architecture, built-in fixtures, materials, colors, exposure, contrast and overall image realism.",
     "Do not alter any floor surface that is already visible in the input image: preserve its exact material, plank or tile pattern, direction, plank width, seams, color, texture, wear, reflections and perspective.",
     "Where removed furniture or rugs reveal hidden floor, extend the nearest visible original flooring seamlessly with the same material, plank or tile direction, scale, seam alignment, color and perspective; never redesign or replace the floor.",
@@ -338,7 +339,8 @@ function buildEditPrompt(payload) {
     ...common,
     "Default goal: remove all movable furniture, freestanding items, plants, lamps, rugs, small decor, loose household objects and clutter, except for the preserved kitchen elements.",
     "The user instructions below may specify existing movable items to preserve or remove, or defects to correct in the edited result. Later instructions override earlier conflicting instructions.",
-    "The preservation rules for kitchen elements, architecture and already visible surfaces are mandatory and override any contrary user instruction.",
+    "The preservation rules for a clearly identifiable fixed kitchen, architecture and already visible surfaces are mandatory. Do not use kitchen preservation to retain ambiguous storage furniture.",
+    "If the user asks to preserve only one or more named items, remove every other movable item, including ambiguous cabinets, wall units and display furniture.",
     "Preserve only an existing movable item the user explicitly asks to keep. Do not invent any item requested by the user if it is not already present in the original photo.",
     instructions.length
       ? `User instruction history:\n${instructions.map((instruction, index) => `${index + 1}. ${instruction}`).join("\n")}`
