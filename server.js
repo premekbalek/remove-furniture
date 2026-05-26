@@ -13,6 +13,7 @@ loadDotenv();
 const port = Number(process.env.PORT || 3000);
 const apiKey = process.env.OPENAI_API_KEY;
 const imageModel = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
+const imageQuality = readImageQuality(process.env.OPENAI_IMAGE_QUALITY);
 const maxOutputEdge = readPositiveInteger(process.env.OPENAI_MAX_OUTPUT_EDGE, 2048);
 const maxOutputPixels = readPositiveInteger(process.env.OPENAI_MAX_OUTPUT_PIXELS, 3686400);
 const maxJsonBytes = 75 * 1024 * 1024;
@@ -104,7 +105,7 @@ async function handleRemoveFurniture(req, res) {
   form.append("prompt", prompt);
   form.append("image", new File([imageBuffer], safeName, { type: mimeType }));
   form.append("size", `${size.width}x${size.height}`);
-  form.append("quality", "high");
+  form.append("quality", imageQuality);
   form.append("output_format", outputFormat);
 
   if (outputFormat === "jpeg" || outputFormat === "webp") {
@@ -352,6 +353,10 @@ function ceilToMultiple(value, multiple) {
 function readPositiveInteger(value, fallback) {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function readImageQuality(value) {
+  return ["low", "medium", "high", "auto"].includes(value) ? value : "high";
 }
 
 function clamp(value, min, max) {
