@@ -13,6 +13,8 @@ const spinner = document.querySelector("#spinner");
 const removalModes = document.querySelectorAll('input[name="removalMode"]');
 const categoryPanel = document.querySelector("#categoryPanel");
 const categoryInputs = document.querySelectorAll('input[name="removeCategory"]');
+const activeJobStorageKey = "removeFurniture.activeJobId";
+const pollDelayMs = 2500;
 
 let selectedFile = null;
 let originalDataUrl = null;
@@ -48,7 +50,7 @@ removeButton.addEventListener("click", async () => {
 
   setBusy(true);
   resetResult();
-  statusText.textContent = "Mazani nabytku muze trvat az nekolik minut...";
+  showProcessingStatus("Odesilam fotku ke zpracovani...");
 
   try {
     const response = await fetch("/api/remove-furniture", {
@@ -72,24 +74,15 @@ removeButton.addEventListener("click", async () => {
       throw new Error(payload.error || "Uprava fotky se nepodarila.");
     }
 
-    resultImage.src = payload.imageData;
-    resultFrame.classList.remove("empty", "error");
-    resultPlaceholder.hidden = true;
-    downloadButton.href = payload.imageData;
-    downloadButton.download = payload.fileName || "mistnost-bez-nabytku.png";
-    downloadButton.classList.remove("disabled");
-    resultFile = dataUrlToFile(payload.imageData, downloadButton.download, payload.mimeType);
-    shareButton.disabled = !canShareResult(resultFile);
+    if (!payload.jobId) {
+      throw new Error("Server nevratil identifikator zpracovani.");
+    }
 
-    const sizeNote = payload.usedOriginalSize
-      ? "Rozliseni zustalo stejne."
-      : `Webovy vystup: ${payload.width} x ${payload.height}px ve vysoke kvalite.`;
-    statusText.textContent = `Hotovo. ${sizeNote}`;
+    localStorage.setItem(activeJobStorageKey, payload.jobId);
+    showProcessingStatus("Fotka se zpracovava. Muzete se vratit pozdeji.");
+    await pollEditJob(payload.jobId);
   } catch (error) {
-    resultFrame.classList.add("error");
-    resultPlaceholder.hidden = false;
-    resultPlaceholder.textContent = error.message;
-    statusText.textContent = "Fotku se nepodarilo upravit.";
+    showEditError(error.message);
   } finally {
     setBusy(false);
   }
@@ -115,6 +108,91 @@ function resetResult() {
   downloadButton.removeAttribute("href");
   downloadButton.classList.add("disabled");
   shareButton.disabled = true;
+}
+
+function showProcessingStatus(message) {
+  spinner.hidden = false;
+  resultFrame.classList.add("empty");
+  resultFrame.classList.remove("error");
+  resultPlaceholder.hidden = false;
+  resultPlaceholder.textContent = "Zpracovavam fotku...";
+  statusText.textContent = message;
+}
+
+function showEditResult(payload) {
+  spinner.hidden = true;
+  resultImage.src = payload.imageData;
+  resultFrame.classList.remove("empty", "error");
+  resultPlaceholder.hidden = true;
+  downloadButton.href = payload.imageData;
+  downloadButton.download = payload.fileName || "mistnost-bez-nabytku.png";
+  downloadButton.classList.remove("disabled");
+  resultFile = dataUrlToFile(payload.imageData, downloadButton.download, payload.mimeType);
+  shareButton.disabled = !canShareResult(resultFile);
+
+  const sizeNote = payload.usedOriginalSize
+    ? "Rozliseni zustalo stejne."
+    : `Webovy vystup: ${payload.width} x ${payload.height}px.`;
+  statusText.textContent = `Hotovo. ${sizeNote}`;
+}
+
+function showEditError(message) {
+  spinner.hidden = true;
+  resultFrame.classList.add("empty", "error");
+  resultPlaceholder.hidden = false;
+  resultPlaceholder.textContent = message;
+  statusText.textContent = "Fotku se nepodarilo upravit.";
+}
+
+async function pollEditJob(jobId) {
+  while (true) {
+    let response;
+    try {
+      response = await fetch(`/api/remove-furniture/${encodeURIComponent(jobId)}`, {
+        cache: "no-store"
+      });
+    } catch {
+      statusText.textContent = "Obnovuji spojeni se zpracovanim...";
+      await delay(pollDelayMs);
+      continue;
+    }
+
+    const payload = await response.json();
+    if (!response.ok) {
+      localStorage.removeItem(activeJobStorageKey);
+      throw new Error(payload.error || "Stav zpracovani neni dostupny.");
+    }
+
+    if (payload.status === "completed") {
+      localStorage.removeItem(activeJobStorageKey);
+      showEditResult(payload);
+      return;
+    }
+
+    if (payload.status === "failed") {
+      localStorage.removeItem(activeJobStorageKey);
+      throw new Error(payload.error || "Uprava fotky se nepodarila.");
+    }
+
+    await delay(pollDelayMs);
+  }
+}
+
+async function resumePendingJob() {
+  const jobId = localStorage.getItem(activeJobStorageKey);
+  if (!jobId) return;
+
+  resetResult();
+  setBusy(true);
+  showProcessingStatus("Obnovuji probihajici zpracovani...");
+
+  try {
+    await pollEditJob(jobId);
+  } catch (error) {
+    showEditError(error.message);
+  } finally {
+    setBusy(false);
+  }
 }
 
 function readAsDataUrl(file) {
@@ -166,6 +244,10 @@ function loadImage(src) {
     image.onerror = () => reject(new Error("Obrazek se nepodarilo zobrazit."));
     image.src = src;
   });
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 shareButton.addEventListener("click", async () => {
@@ -229,3 +311,4 @@ function canRequestEdit() {
 }
 
 updateRemovalControls();
+void resumePendingJob();

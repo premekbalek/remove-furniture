@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -18,6 +19,9 @@ const maxOutputEdge = readPositiveInteger(process.env.OPENAI_MAX_OUTPUT_EDGE, 20
 const maxOutputPixels = readPositiveInteger(process.env.OPENAI_MAX_OUTPUT_PIXELS, 3686400);
 const maxJsonBytes = 75 * 1024 * 1024;
 const openAiEditUrl = "https://api.openai.com/v1/images/edits";
+const editJobTtlMs = 60 * 60 * 1000;
+const maxStoredJobs = 10;
+const editJobs = new Map();
 const furnitureCategories = new Map([
   ["bed", "beds, bed frames, mattresses and their bedding"],
   ["seating", "sofas, couches, armchairs and lounge chairs"],
@@ -44,6 +48,11 @@ const server = createServer(async (req, res) => {
   try {
     if (req.method === "POST" && req.url === "/api/remove-furniture") {
       await handleRemoveFurniture(req, res);
+      return;
+    }
+
+    if (req.method === "GET" && req.url.startsWith("/api/remove-furniture/")) {
+      handleEditJobStatus(req, res);
       return;
     }
 
@@ -112,36 +121,111 @@ async function handleRemoveFurniture(req, res) {
     form.append("output_compression", "0");
   }
 
-  const openAiResponse = await fetchOpenAiWithRetry(form);
-
-  const responseText = await openAiResponse.text();
-  let data;
-  try {
-    data = JSON.parse(responseText);
-  } catch {
-    data = null;
-  }
-
-  if (!openAiResponse.ok) {
-    const message = data?.error?.message || "OpenAI API vratilo chybu pri uprave obrazku.";
-    sendJson(res, openAiResponse.status, { error: message });
-    return;
-  }
-
-  const b64 = data?.data?.[0]?.b64_json;
-  if (!b64) {
-    sendJson(res, 502, { error: "Odpoved neobsahovala upraveny obrazek." });
-    return;
-  }
-
-  sendJson(res, 200, {
-    imageData: `data:image/${outputFormat};base64,${b64}`,
-    mimeType: `image/${outputFormat}`,
-    fileName: outputName(safeName, extension),
-    width: size.width,
-    height: size.height,
-    usedOriginalSize: size.usedOriginalSize
+  pruneEditJobs();
+  const jobId = randomUUID();
+  editJobs.set(jobId, {
+    status: "processing",
+    createdAt: Date.now()
   });
+
+  sendJson(res, 202, { jobId, status: "processing" });
+
+  void processEditJob(jobId, {
+    form,
+    outputFormat,
+    extension,
+    safeName,
+    size
+  });
+}
+
+function handleEditJobStatus(req, res) {
+  pruneEditJobs();
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const jobId = url.pathname.split("/").pop();
+  const job = editJobs.get(jobId);
+
+  if (!job) {
+    sendJson(res, 404, { error: "Uloha uz neni dostupna. Zpracujte fotku znovu." });
+    return;
+  }
+
+  if (job.status === "completed") {
+    sendJson(res, 200, { status: job.status, ...job.result });
+    return;
+  }
+
+  if (job.status === "failed") {
+    sendJson(res, 200, { status: job.status, error: job.error });
+    return;
+  }
+
+  sendJson(res, 200, { status: job.status });
+}
+
+async function processEditJob(jobId, edit) {
+  try {
+    const openAiResponse = await fetchOpenAiWithRetry(edit.form);
+    const responseText = await openAiResponse.text();
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      data = null;
+    }
+
+    if (!openAiResponse.ok) {
+      throw publicError(
+        data?.error?.message || "OpenAI API vratilo chybu pri uprave obrazku.",
+        openAiResponse.status
+      );
+    }
+
+    const b64 = data?.data?.[0]?.b64_json;
+    if (!b64) {
+      throw publicError("Odpoved neobsahovala upraveny obrazek.", 502);
+    }
+
+    const job = editJobs.get(jobId);
+    if (!job) return;
+    job.status = "completed";
+    job.finishedAt = Date.now();
+    job.result = {
+      imageData: `data:image/${edit.outputFormat};base64,${b64}`,
+      mimeType: `image/${edit.outputFormat}`,
+      fileName: outputName(edit.safeName, edit.extension),
+      width: edit.size.width,
+      height: edit.size.height,
+      usedOriginalSize: edit.size.usedOriginalSize
+    };
+  } catch (error) {
+    console.error(error);
+    const job = editJobs.get(jobId);
+    if (!job) return;
+    job.status = "failed";
+    job.finishedAt = Date.now();
+    job.error = error.statusCode ? error.message : "Neocekavana chyba serveru.";
+  }
+
+  pruneEditJobs();
+}
+
+function pruneEditJobs() {
+  const now = Date.now();
+  for (const [jobId, job] of editJobs) {
+    if (job.status !== "processing" && now - job.finishedAt > editJobTtlMs) {
+      editJobs.delete(jobId);
+    }
+  }
+
+  const storedResults = [...editJobs.entries()]
+    .filter(([, job]) => job.status !== "processing")
+    .sort((a, b) => a[1].finishedAt - b[1].finishedAt);
+
+  while (storedResults.length > maxStoredJobs) {
+    const [jobId] = storedResults.shift();
+    editJobs.delete(jobId);
+  }
 }
 
 async function serveStatic(req, res) {
@@ -193,6 +277,12 @@ function readRequestBody(req, limit) {
 function sendJson(res, status, payload) {
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
   res.end(JSON.stringify(payload));
+}
+
+function publicError(message, statusCode) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
 }
 
 async function fetchOpenAiWithRetry(form) {
