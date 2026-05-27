@@ -162,6 +162,61 @@ button:disabled,
   font-size: 13px;
 }
 
+.edit-modes {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.edit-modes legend {
+  padding: 0 0 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.mode-option {
+  position: relative;
+}
+
+.mode-option input {
+  position: absolute;
+  opacity: 0;
+}
+
+.mode-option span {
+  min-height: 66px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.mode-option small {
+  color: var(--muted);
+}
+
+.mode-option input:checked + span {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.mode-option input:focus-visible + span {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.mode-help {
+  font-size: 13px;
+}
+
 .chat-thread {
   min-height: 66px;
   max-height: 190px;
@@ -246,6 +301,36 @@ figcaption {
   text-transform: uppercase;
 }
 
+.working-header {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.selection-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.selection-tools input {
+  width: 88px;
+  accent-color: var(--accent);
+}
+
+.selection-tools button {
+  min-height: 34px;
+  padding: 0 10px;
+  border-color: var(--line);
+  background: var(--panel);
+  font-size: 13px;
+}
+
 .image-frame {
   position: relative;
   flex: 1;
@@ -256,6 +341,19 @@ figcaption {
   background: #eef1ee;
   border: 1px solid var(--line);
   border-radius: 8px;
+}
+
+.selection-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.image-frame.empty .selection-canvas {
+  display: none;
 }
 
 .image-frame img {
@@ -280,6 +378,8 @@ figcaption {
 }
 
 .spinner {
+  position: absolute;
+  z-index: 2;
   width: 48px;
   height: 48px;
   border: 4px solid rgba(15, 118, 110, 0.18);
@@ -325,6 +425,15 @@ figcaption {
 
   .chat-composer {
     align-items: stretch;
+    flex-direction: column;
+  }
+
+  .edit-modes {
+    grid-template-columns: 1fr;
+  }
+
+  .working-header {
+    align-items: flex-start;
     flex-direction: column;
   }
 

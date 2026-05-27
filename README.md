@@ -2,6 +2,15 @@
 
 Jednoducha webova aplikace pro nahrani fotky mistnosti, odstraneni nabytku pomoci OpenAI Image API a stazeni vysledku.
 
+## Upravy
+
+Aplikace podporuje dva navazujici rezimy:
+
+- `Odstranit nabytek`: nabytek lze popsat textem, nebo ho na pracovni fotce oznacit prstem ci mysi a zadat odstraneni.
+- `Retusovat fotku`: na pracovni fotce oznacte misto a do chatu napiste pozadovanou lokalni opravu.
+
+Rezimy lze kombinovat. Kazda dalsi uprava vychazi z posledniho vysledku, zatimco vlevo zustava puvodni fotka pro porovnani.
+
 ## Spusteni
 
 1. Vytvorte `.env` podle `.env.example`.

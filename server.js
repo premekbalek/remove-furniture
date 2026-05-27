@@ -74,7 +74,7 @@ async function handleRemoveFurniture(req, res) {
 
   const body = await readRequestBody(req, maxJsonBytes);
   const payload = JSON.parse(body);
-  const { imageData, mimeType, fileName, width, height } = payload;
+  const { imageData, mimeType, fileName, width, height, maskData } = payload;
 
   if (!imageData || !mimeType || !width || !height) {
     sendJson(res, 400, { error: "Chybi obrazek nebo jeho rozmery." });
@@ -89,6 +89,14 @@ async function handleRemoveFurniture(req, res) {
 
   const base64 = String(imageData).replace(/^data:image\/[a-z0-9.+-]+;base64,/i, "");
   const imageBuffer = Buffer.from(base64, "base64");
+  let maskBuffer = null;
+  if (maskData) {
+    if (mimeType !== "image/png" || !String(maskData).startsWith("data:image/png;base64,")) {
+      sendJson(res, 400, { error: "Obrazek s oznacenim musi byt odeslan jako PNG maska." });
+      return;
+    }
+    maskBuffer = Buffer.from(String(maskData).replace(/^data:image\/png;base64,/i, ""), "base64");
+  }
   const size = supportedImageSize(Number(width), Number(height));
   const extension = outputFormat === "jpeg" ? "jpg" : outputFormat;
   const safeName = sanitizeFileName(fileName || `mistnost.${extension}`);
@@ -98,6 +106,9 @@ async function handleRemoveFurniture(req, res) {
   form.append("model", imageModel);
   form.append("prompt", prompt);
   form.append("image", new File([imageBuffer], safeName, { type: mimeType }));
+  if (maskBuffer) {
+    form.append("mask", new File([maskBuffer], "oznacena-oblast.png", { type: "image/png" }));
+  }
   form.append("size", `${size.width}x${size.height}`);
   form.append("quality", imageQuality);
   form.append("output_format", outputFormat);
@@ -323,39 +334,48 @@ function formatFromMime(mimeType) {
 }
 
 function buildEditPrompt(payload) {
+  const operation = payload.operation === "retouch" ? "retouch" : "remove";
+  const instruction = sanitizeInstruction(payload.instruction);
+  const maskGuidance = payload.maskData
+    ? "A user-drawn mask is supplied. Apply the requested edit to the marked region and its immediately necessary blend boundary only; keep unmarked areas unchanged."
+    : "No drawn mask is supplied. Identify only the subject described in the user's current instruction.";
   const common = [
     "Photorealistic real estate photo edit.",
     "Preserve an actual fixed kitchen installation exactly as present only when it is clearly identifiable by food-preparation features such as a continuous countertop, backsplash, sink, tap, cooktop, oven or integrated appliance, including its connected cabinetry and fixed island.",
-    "A freestanding or living-room wall unit, display cabinet, vitrine, sideboard, bookcase, wardrobe, dresser or storage cabinet is not a kitchen, even if its wooden appearance resembles kitchen cabinetry. Remove it unless the user explicitly asks to preserve it.",
+    "A freestanding or living-room wall unit, display cabinet, vitrine, sideboard, bookcase, wardrobe, dresser or storage cabinet is not a kitchen, even if its wooden appearance resembles kitchen cabinetry.",
     "Preserve the original camera angle, room layout, architecture, built-in fixtures, materials, colors, exposure, contrast and overall image realism.",
-    "Do not alter any floor surface that is already visible in the input image: preserve its exact material, plank or tile pattern, direction, plank width, seams, color, texture, wear, reflections and perspective.",
-    "Where removed furniture or rugs reveal hidden floor, extend the nearest visible original flooring seamlessly with the same material, plank or tile direction, scale, seam alignment, color and perspective; never redesign or replace the floor.",
-    "Reconstruct only newly revealed hidden areas of floor, walls and trim, together with necessary lighting and shadows.",
+    "Outside the explicitly requested local edit, preserve all visible surfaces, their patterns, color, texture, reflections and perspective.",
     "Do not add new furniture, decor, text, logos, people, watermarks or unrealistic objects."
   ];
-  const instructions = sanitizeInstructions(payload.instructions);
+
+  if (operation === "retouch") {
+    return [
+      ...common,
+      "Task type: retouch the existing photo, not furniture removal.",
+      maskGuidance,
+      "Correct only the requested imperfection or local appearance change, including a marked wall or floor surface when requested. Do not remove furniture or redesign the room unless the current instruction explicitly requests it.",
+      `Current user instruction: ${instruction || "Retouch the marked area naturally."}`,
+      "Return the same room with a natural, invisible photographic retouch."
+    ].join(" ");
+  }
 
   return [
     ...common,
-    "Default goal: remove all movable furniture, freestanding items, plants, lamps, rugs, small decor, loose household objects and clutter, except for the preserved kitchen elements.",
-    "The user instructions below may specify existing movable items to preserve or remove, or defects to correct in the edited result. Later instructions override earlier conflicting instructions.",
+    "Task type: remove existing furniture or movable objects.",
+    maskGuidance,
+    "Do not alter any floor surface that is already visible in the input image: preserve its exact material, plank or tile pattern, direction, plank width, seams, color, texture, wear, reflections and perspective.",
+    "Where removed furniture or rugs reveal hidden floor, extend the nearest visible original flooring seamlessly with the same material, plank or tile direction, scale, seam alignment, color and perspective; never redesign or replace the floor.",
+    "Reconstruct only newly revealed hidden areas of floor, walls and trim, together with necessary lighting and shadows.",
+    "A described or marked freestanding storage item must be treated as removable furniture, not preserved as a kitchen.",
+    "Remove only the object or objects identified in the current user instruction or marked region. If the user explicitly asks to remove everything, remove all movable furniture and loose objects except the preserved kitchen.",
     "The preservation rules for a clearly identifiable fixed kitchen, architecture and already visible surfaces are mandatory. Do not use kitchen preservation to retain ambiguous storage furniture.",
-    "If the user asks to preserve only one or more named items, remove every other movable item, including ambiguous cabinets, wall units and display furniture.",
-    "Preserve only an existing movable item the user explicitly asks to keep. Do not invent any item requested by the user if it is not already present in the original photo.",
-    instructions.length
-      ? `User instruction history:\n${instructions.map((instruction, index) => `${index + 1}. ${instruction}`).join("\n")}`
-      : "User instruction history: none. Apply the default goal.",
-    "Return the same room with only explicitly preserved movable items and the intact kitchen remaining."
+    `Current user instruction: ${instruction || "Remove the marked movable object."}`,
+    "Return the same room with the requested object removed and the revealed surfaces reconstructed naturally."
   ].join(" ");
 }
 
-function sanitizeInstructions(value) {
-  if (!Array.isArray(value)) return [];
-
-  return value
-    .slice(-8)
-    .map((instruction) => String(instruction).replace(/\s+/g, " ").trim().slice(0, 1000))
-    .filter(Boolean);
+function sanitizeInstruction(value) {
+  return String(value || "").replace(/\s+/g, " ").trim().slice(0, 1000);
 }
 
 function supportedImageSize(width, height) {

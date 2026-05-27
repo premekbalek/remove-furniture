@@ -3,15 +3,15 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Vymazani nabytku</title>
+    <title>Uprava fotky mistnosti</title>
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
     <main class="app-shell">
-      <section class="workspace" aria-label="Vymazani nabytku z fotky">
+      <section class="workspace" aria-label="Uprava fotky mistnosti">
         <div class="topbar">
           <div>
-            <h1>Vymazani nabytku</h1>
+            <h1>Uprava fotky mistnosti</h1>
             <p id="statusText">Nahrajte fotku mistnosti z telefonu nebo pocitace.</p>
           </div>
           <div class="upload-actions">
@@ -31,18 +31,36 @@
             <h2>Uprava fotky</h2>
             <p>Kuchynska linka zustane vzdy zachovana.</p>
           </div>
+          <fieldset class="edit-modes">
+            <legend>Zvolte akci</legend>
+            <label class="mode-option">
+              <input type="radio" name="editMode" value="remove" checked>
+              <span>
+                <strong>Odstranit nabytek</strong>
+                <small>Popiste nabytek nebo ho oznacte na fotce.</small>
+              </span>
+            </label>
+            <label class="mode-option">
+              <input type="radio" name="editMode" value="retouch">
+              <span>
+                <strong>Retusovat fotku</strong>
+                <small>Oznacte misto a napiste pozadovanou zmenu.</small>
+              </span>
+            </label>
+          </fieldset>
+          <p id="modeHelp" class="mode-help">Napiste napr. "Odstran stul a zidle", nebo predmet na pracovni fotce oznacte a napiste "Vymazat".</p>
           <div id="chatThread" class="chat-thread" aria-live="polite">
-            <p class="chat-message assistant">Co ma zustat? Napiste napriklad "Nech gauc". Vse ostatni odstranim.</p>
+            <p class="chat-message assistant">Zvolte akci, pripadne oznacte cast pracovni fotky a napiste zadani.</p>
           </div>
           <form id="instructionForm" class="chat-composer">
             <label class="visually-hidden" for="instructionInput">Instrukce k uprave fotky</label>
-            <textarea id="instructionInput" maxlength="1000" rows="2" placeholder="Napr. Nech gauc. Odstran stul a koberec."></textarea>
-            <button id="instructionButton" class="primary" type="submit" disabled>Upravit podle zadani</button>
+            <textarea id="instructionInput" maxlength="1000" rows="2" placeholder="Napr. Odstran stul a zidle."></textarea>
+            <button id="instructionButton" class="primary" type="submit" disabled>Odstranit nabytek</button>
           </form>
         </section>
 
         <div class="actions">
-          <button id="removeButton" class="primary" type="button" disabled>Odstranit vse</button>
+          <button id="removeButton" class="primary" type="button" disabled>Odstranit vsechen nabytek</button>
           <button id="shareButton" type="button" disabled>Sdilet / ulozit</button>
           <a id="downloadButton" class="download disabled" href="#" download>Stahnout vysledek</a>
         </div>
@@ -57,9 +75,17 @@
           </figure>
 
           <figure class="preview">
-            <figcaption>Upravena fotka</figcaption>
+            <div class="working-header">
+              <figcaption>Pracovni fotka / vysledek</figcaption>
+              <div class="selection-tools" aria-label="Nastroje oznaceni oblasti">
+                <label for="brushSize">Velikost oznaceni</label>
+                <input id="brushSize" type="range" min="12" max="100" value="42">
+                <button id="clearSelectionButton" type="button" disabled>Smazat oznaceni</button>
+              </div>
+            </div>
             <div class="image-frame empty" id="resultFrame">
-              <img id="resultImage" alt="Fotka mistnosti bez nabytku">
+              <img id="resultImage" alt="Pracovni fotka mistnosti">
+              <canvas id="selectionCanvas" class="selection-canvas" aria-label="Oznaceni oblasti pro upravu"></canvas>
               <div id="spinner" class="spinner" hidden></div>
               <span id="resultPlaceholder">Vysledek se zobrazi tady</span>
             </div>

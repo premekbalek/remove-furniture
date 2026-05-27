@@ -14,18 +14,37 @@ const chatThread = document.querySelector("#chatThread");
 const instructionForm = document.querySelector("#instructionForm");
 const instructionInput = document.querySelector("#instructionInput");
 const instructionButton = document.querySelector("#instructionButton");
+const modeInputs = document.querySelectorAll('input[name="editMode"]');
+const modeHelp = document.querySelector("#modeHelp");
+const selectionCanvas = document.querySelector("#selectionCanvas");
+const brushSize = document.querySelector("#brushSize");
+const clearSelectionButton = document.querySelector("#clearSelectionButton");
 const activeJobStorageKey = "removeFurniture.activeJobId";
 const pollDelayMs = 2500;
 
 let selectedFile = null;
 let originalDataUrl = null;
 let originalSize = null;
+let workingDataUrl = null;
+let workingMimeType = null;
+let workingFileName = null;
+let workingSize = null;
 let resultFile = null;
-let instructionHistory = [];
+let editMode = "remove";
+let isBusy = false;
+let selectionStrokes = [];
+let activeStroke = null;
 
 fileInput.addEventListener("change", () => handleFileSelection(fileInput));
 cameraInput.addEventListener("change", () => handleFileSelection(cameraInput));
 instructionInput.addEventListener("input", updateActionButtons);
+modeInputs.forEach((input) => input.addEventListener("change", handleModeChange));
+clearSelectionButton.addEventListener("click", clearSelection);
+selectionCanvas.addEventListener("pointerdown", startSelectionStroke);
+selectionCanvas.addEventListener("pointermove", continueSelectionStroke);
+selectionCanvas.addEventListener("pointerup", endSelectionStroke);
+selectionCanvas.addEventListener("pointercancel", endSelectionStroke);
+window.addEventListener("resize", renderSelection);
 
 async function handleFileSelection(input) {
   const [file] = input.files;
@@ -39,55 +58,71 @@ async function handleFileSelection(input) {
   selectedFile = normalized.file;
   originalDataUrl = normalized.dataUrl;
   originalSize = await getImageSize(originalDataUrl);
+  workingDataUrl = originalDataUrl;
+  workingMimeType = selectedFile.type;
+  workingFileName = selectedFile.name;
+  workingSize = originalSize;
 
   originalImage.src = originalDataUrl;
   originalFrame.classList.remove("empty");
+  resultImage.src = workingDataUrl;
+  resultFrame.classList.remove("empty");
+  resultPlaceholder.hidden = true;
+  clearSelection();
   updateActionButtons();
   const conversionNote = normalized.converted ? " | prevedeno na JPEG pro zpracovani" : " | pripraveno pro zpracovani";
   statusText.textContent = `${selectedFile.name} | ${originalSize.width} x ${originalSize.height}px${conversionNote}`;
 }
 
 removeButton.addEventListener("click", () => {
-  submitInstruction("Odstran vsechen pohyblivy nabytek a volne predmety. Nic krome kuchynske linky neponechavej.");
+  clearSelection();
+  submitInstruction(
+    "Odstran vsechen pohyblivy nabytek a volne predmety. Nic krome kuchynske linky neponechavej.",
+    "remove"
+  );
 });
 
 instructionForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  submitInstruction(instructionInput.value);
+  submitInstruction(instructionInput.value, editMode);
 });
 
-function submitInstruction(value) {
-  if (!selectedFile || !originalDataUrl || !originalSize) return;
+function submitInstruction(value, operation) {
+  if (!workingDataUrl || !workingSize) return;
   const instruction = value.trim();
   if (!instruction) return;
 
-  instructionHistory.push(instruction);
-  appendChatMessage("user", instruction);
+  const hasMask = selectionStrokes.length > 0;
+  const operationName = operation === "retouch" ? "Retus" : "Odstraneni";
+  appendChatMessage("user", `${operationName}${hasMask ? " (oznacena oblast)" : ""}: ${instruction}`);
   instructionInput.value = "";
+  const maskData = hasMask ? createMaskDataUrl() : null;
   updateActionButtons();
-  void requestEdit();
+  void requestEdit({ instruction, operation, maskData });
 }
 
-async function requestEdit() {
-  if (!selectedFile || !originalDataUrl || !originalSize) return;
+async function requestEdit(edit) {
+  if (!workingDataUrl || !workingSize) return;
 
   setBusy(true);
-  resetResult();
   showProcessingStatus("Odesilam fotku ke zpracovani...");
 
   try {
+    const maskedImage = edit.maskData ? await convertImageDataUrlToPng(workingDataUrl) : null;
     const response = await fetch("/api/remove-furniture", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        imageData: originalDataUrl,
-        mimeType: selectedFile.type,
-        fileName: selectedFile.name,
-        width: originalSize.width,
-        height: originalSize.height,
-        instructions: instructionHistory
+        imageData: maskedImage || workingDataUrl,
+        mimeType: maskedImage ? "image/png" : workingMimeType,
+        fileName: maskedImage ? replaceExtension(workingFileName, "png") : workingFileName,
+        width: workingSize.width,
+        height: workingSize.height,
+        operation: edit.operation,
+        instruction: edit.instruction,
+        maskData: edit.maskData
       })
     });
 
@@ -110,17 +145,27 @@ async function requestEdit() {
   }
 }
 
-function setBusy(isBusy) {
-  spinner.hidden = !isBusy;
-  removeButton.disabled = isBusy || !canRequestEdit();
-  instructionInput.disabled = isBusy;
-  instructionButton.disabled = isBusy || !canSubmitInstruction();
-  shareButton.disabled = isBusy || !canShareResult(resultFile);
-  fileInput.disabled = isBusy;
-  cameraInput.disabled = isBusy;
+function setBusy(busy) {
+  isBusy = busy;
+  spinner.hidden = !busy;
+  removeButton.disabled = busy || !canRequestEdit();
+  instructionInput.disabled = busy;
+  instructionButton.disabled = busy || !canSubmitInstruction();
+  shareButton.disabled = busy || !canShareResult(resultFile);
+  fileInput.disabled = busy;
+  cameraInput.disabled = busy;
+  modeInputs.forEach((input) => {
+    input.disabled = busy;
+  });
+  brushSize.disabled = busy || !canRequestEdit();
+  clearSelectionButton.disabled = busy || selectionStrokes.length === 0;
 }
 
 function resetResult() {
+  workingDataUrl = null;
+  workingMimeType = null;
+  workingFileName = null;
+  workingSize = null;
   resultFile = null;
   resultImage.removeAttribute("src");
   resultFrame.classList.add("empty");
@@ -130,19 +175,26 @@ function resetResult() {
   downloadButton.removeAttribute("href");
   downloadButton.classList.add("disabled");
   shareButton.disabled = true;
+  clearSelection();
 }
 
 function showProcessingStatus(message) {
   spinner.hidden = false;
-  resultFrame.classList.add("empty");
   resultFrame.classList.remove("error");
-  resultPlaceholder.hidden = false;
-  resultPlaceholder.textContent = "Zpracovavam fotku...";
+  if (!workingDataUrl) {
+    resultFrame.classList.add("empty");
+    resultPlaceholder.hidden = false;
+    resultPlaceholder.textContent = "Zpracovavam fotku...";
+  }
   statusText.textContent = message;
 }
 
 function showEditResult(payload) {
   spinner.hidden = true;
+  workingDataUrl = payload.imageData;
+  workingMimeType = payload.mimeType;
+  workingFileName = payload.fileName;
+  workingSize = { width: payload.width, height: payload.height };
   resultImage.src = payload.imageData;
   resultFrame.classList.remove("empty", "error");
   resultPlaceholder.hidden = true;
@@ -151,8 +203,9 @@ function showEditResult(payload) {
   downloadButton.classList.remove("disabled");
   resultFile = dataUrlToFile(payload.imageData, downloadButton.download, payload.mimeType);
   shareButton.disabled = !canShareResult(resultFile);
-  instructionButton.textContent = "Opravit vysledek";
-  appendChatMessage("assistant", "Uprava je hotova. Pokud neco nesedi, napiste co mam opravit.");
+  updateModeCopy();
+  clearSelection();
+  appendChatMessage("assistant", "Uprava je hotova. Muzete pokracovat dalsim odstranenim nebo retusi.");
 
   const sizeNote = payload.usedOriginalSize
     ? "Rozliseni zustalo stejne."
@@ -162,10 +215,15 @@ function showEditResult(payload) {
 
 function showEditError(message) {
   spinner.hidden = true;
-  resultFrame.classList.add("empty", "error");
-  resultPlaceholder.hidden = false;
-  resultPlaceholder.textContent = message;
-  statusText.textContent = "Fotku se nepodarilo upravit.";
+  resultFrame.classList.add("error");
+  if (workingDataUrl) {
+    resultPlaceholder.hidden = true;
+  } else {
+    resultFrame.classList.add("empty");
+    resultPlaceholder.hidden = false;
+    resultPlaceholder.textContent = message;
+  }
+  statusText.textContent = `Fotku se nepodarilo upravit: ${message}`;
 }
 
 async function pollEditJob(jobId) {
@@ -254,6 +312,15 @@ async function convertImageDataUrlToJpeg(dataUrl) {
   return canvas.toDataURL("image/jpeg", 0.96);
 }
 
+async function convertImageDataUrlToPng(dataUrl) {
+  const image = await loadImage(dataUrl);
+  const canvas = document.createElement("canvas");
+  canvas.width = image.naturalWidth;
+  canvas.height = image.naturalHeight;
+  canvas.getContext("2d").drawImage(image, 0, 0);
+  return canvas.toDataURL("image/png");
+}
+
 function getImageSize(src) {
   return loadImage(src).then((image) => ({
     width: image.naturalWidth,
@@ -323,14 +390,15 @@ function replaceExtension(fileName, extension) {
 function updateActionButtons() {
   removeButton.disabled = !canRequestEdit();
   instructionButton.disabled = !canSubmitInstruction();
+  brushSize.disabled = !canRequestEdit();
+  clearSelectionButton.disabled = selectionStrokes.length === 0;
 }
 
 function resetConversation() {
-  instructionHistory = [];
   instructionInput.value = "";
-  instructionButton.textContent = "Upravit podle zadani";
   chatThread.replaceChildren();
-  appendChatMessage("assistant", 'Co ma zustat? Napiste napriklad "Nech gauc". Vse ostatni odstranim.');
+  appendChatMessage("assistant", "Zvolte akci, pripadne oznacte cast pracovni fotky a napiste zadani.");
+  updateModeCopy();
 }
 
 function appendChatMessage(role, text) {
@@ -342,11 +410,149 @@ function appendChatMessage(role, text) {
 }
 
 function canRequestEdit() {
-  return Boolean(selectedFile);
+  return Boolean(workingDataUrl);
 }
 
 function canSubmitInstruction() {
-  return Boolean(selectedFile && instructionInput.value.trim());
+  return Boolean(workingDataUrl && instructionInput.value.trim());
+}
+
+function handleModeChange(event) {
+  if (!event.target.checked) return;
+  editMode = event.target.value;
+  updateModeCopy();
+}
+
+function updateModeCopy() {
+  if (editMode === "retouch") {
+    modeHelp.textContent = 'Oznacte misto na pracovni fotce a napiste napr. "Odstran skvrnu na stene" nebo "Oprav poskozeni podlahy".';
+    instructionInput.placeholder = "Napr. Odstran skvrnu na stene.";
+    instructionButton.textContent = "Retusovat fotku";
+    return;
+  }
+
+  modeHelp.textContent = 'Napiste napr. "Odstran stul a zidle", nebo predmet na pracovni fotce oznacte a napiste "Vymazat".';
+  instructionInput.placeholder = "Napr. Odstran stul a zidle.";
+  instructionButton.textContent = "Odstranit nabytek";
+}
+
+function startSelectionStroke(event) {
+  if (!canRequestEdit() || isBusy) return;
+  const point = selectionPoint(event);
+  if (!point) return;
+  event.preventDefault();
+  selectionCanvas.setPointerCapture(event.pointerId);
+  const displayedRect = getDisplayedImageRect();
+  activeStroke = {
+    width: Number(brushSize.value) / Math.min(displayedRect.width, displayedRect.height),
+    points: [point]
+  };
+  selectionStrokes.push(activeStroke);
+  renderSelection();
+  updateActionButtons();
+}
+
+function continueSelectionStroke(event) {
+  if (!activeStroke || !selectionCanvas.hasPointerCapture(event.pointerId)) return;
+  const point = selectionPoint(event);
+  if (!point) return;
+  event.preventDefault();
+  activeStroke.points.push(point);
+  renderSelection();
+}
+
+function endSelectionStroke(event) {
+  if (!activeStroke) return;
+  if (selectionCanvas.hasPointerCapture(event.pointerId)) {
+    selectionCanvas.releasePointerCapture(event.pointerId);
+  }
+  activeStroke = null;
+}
+
+function clearSelection() {
+  selectionStrokes = [];
+  activeStroke = null;
+  renderSelection();
+  clearSelectionButton.disabled = true;
+}
+
+function selectionPoint(event) {
+  const frameRect = selectionCanvas.getBoundingClientRect();
+  const imageRect = getDisplayedImageRect();
+  const x = event.clientX - frameRect.left - imageRect.x;
+  const y = event.clientY - frameRect.top - imageRect.y;
+  if (x < 0 || y < 0 || x > imageRect.width || y > imageRect.height) return null;
+  return { x: x / imageRect.width, y: y / imageRect.height };
+}
+
+function getDisplayedImageRect() {
+  const width = selectionCanvas.clientWidth;
+  const height = selectionCanvas.clientHeight;
+  if (!workingSize || !width || !height) return { x: 0, y: 0, width, height };
+  const scale = Math.min(width / workingSize.width, height / workingSize.height);
+  const imageWidth = workingSize.width * scale;
+  const imageHeight = workingSize.height * scale;
+  return {
+    x: (width - imageWidth) / 2,
+    y: (height - imageHeight) / 2,
+    width: imageWidth,
+    height: imageHeight
+  };
+}
+
+function renderSelection() {
+  const width = selectionCanvas.clientWidth;
+  const height = selectionCanvas.clientHeight;
+  const scale = window.devicePixelRatio || 1;
+  selectionCanvas.width = Math.max(1, Math.round(width * scale));
+  selectionCanvas.height = Math.max(1, Math.round(height * scale));
+  const context = selectionCanvas.getContext("2d");
+  context.scale(scale, scale);
+  context.strokeStyle = "rgba(15, 118, 110, 0.58)";
+  context.fillStyle = "rgba(15, 118, 110, 0.58)";
+  const imageRect = getDisplayedImageRect();
+  for (const stroke of selectionStrokes) {
+    paintStroke(context, stroke, imageRect);
+  }
+}
+
+function createMaskDataUrl() {
+  const canvas = document.createElement("canvas");
+  canvas.width = workingSize.width;
+  canvas.height = workingSize.height;
+  const context = canvas.getContext("2d");
+  context.fillStyle = "#000000";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.globalCompositeOperation = "destination-out";
+  const imageRect = { x: 0, y: 0, width: canvas.width, height: canvas.height };
+  for (const stroke of selectionStrokes) {
+    paintStroke(context, stroke, imageRect);
+  }
+  return canvas.toDataURL("image/png");
+}
+
+function paintStroke(context, stroke, imageRect) {
+  const lineWidth = stroke.width * Math.min(imageRect.width, imageRect.height);
+  const firstPoint = stroke.points[0];
+  if (!firstPoint) return;
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  context.lineWidth = lineWidth;
+  context.beginPath();
+  context.moveTo(imageRect.x + firstPoint.x * imageRect.width, imageRect.y + firstPoint.y * imageRect.height);
+  for (const point of stroke.points.slice(1)) {
+    context.lineTo(imageRect.x + point.x * imageRect.width, imageRect.y + point.y * imageRect.height);
+  }
+  context.stroke();
+  context.beginPath();
+  context.arc(
+    imageRect.x + firstPoint.x * imageRect.width,
+    imageRect.y + firstPoint.y * imageRect.height,
+    lineWidth / 2,
+    0,
+    Math.PI * 2
+  );
+  context.fill();
 }
 
 void resumePendingJob();
