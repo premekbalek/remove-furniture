@@ -79,7 +79,7 @@ async function handleRemoveFurniture(req, res) {
 
   const body = await readRequestBody(req, maxJsonBytes);
   const payload = JSON.parse(body);
-  const { imageData, mimeType, fileName, width, height, maskData, guideData } = payload;
+  const { imageData, mimeType, fileName, width, height, maskData } = payload;
 
   if (!imageData || !mimeType || !width || !height) {
     sendJson(res, 400, { error: "Chybi obrazek nebo jeho rozmery." });
@@ -96,20 +96,12 @@ async function handleRemoveFurniture(req, res) {
   const base64 = String(imageData).replace(/^data:image\/[a-z0-9.+-]+;base64,/i, "");
   const imageBuffer = Buffer.from(base64, "base64");
   let maskBuffer = null;
-  let guideBuffer = null;
   if (maskData) {
     if (mimeType !== "image/png" || !String(maskData).startsWith("data:image/png;base64,")) {
       sendJson(res, 400, { error: "Obrazek s oznacenim musi byt odeslan jako PNG maska." });
       return;
     }
     maskBuffer = Buffer.from(String(maskData).replace(/^data:image\/png;base64,/i, ""), "base64");
-  }
-  if (guideData) {
-    if (!String(guideData).startsWith("data:image/png;base64,")) {
-      sendJson(res, 400, { error: "Pomocne oznaceni musi byt odeslano jako PNG." });
-      return;
-    }
-    guideBuffer = Buffer.from(String(guideData).replace(/^data:image\/png;base64,/i, ""), "base64");
   }
   const size = supportedImageSize(Number(width), Number(height));
   const extension = "jpg";
@@ -119,12 +111,7 @@ async function handleRemoveFurniture(req, res) {
   const form = new FormData();
   form.append("model", imageModel);
   form.append("prompt", prompt);
-  if (guideBuffer) {
-    form.append("image[]", new File([imageBuffer], safeName, { type: mimeType }));
-    form.append("image[]", new File([guideBuffer], "oznaceni-uprav.png", { type: "image/png" }));
-  } else {
-    form.append("image", new File([imageBuffer], safeName, { type: mimeType }));
-  }
+  form.append("image", new File([imageBuffer], safeName, { type: mimeType }));
   if (maskBuffer) {
     form.append("mask", new File([maskBuffer], "oznacena-oblast.png", { type: "image/png" }));
   }
@@ -375,11 +362,8 @@ function buildEditPrompt(payload) {
   const operation = payload.operation === "retouch" ? "retouch" : "remove";
   const instruction = sanitizeInstruction(payload.instruction);
   const maskGuidance = payload.maskData
-    ? "A user-drawn mask is supplied. Apply the requested edit to the marked region and its immediately necessary blend boundary only; keep unmarked areas unchanged."
+    ? "A user-drawn mask is supplied. Only the transparent mask area may be edited. Keep every opaque mask area unchanged, even if the text instruction mentions nearby objects."
     : "No drawn mask is supplied. Identify only the subject described in the user's current instruction.";
-  const guideGuidance = payload.guideData
-    ? "A second reference image is supplied with colored markings: red markings identify areas intended for editing or removal, and blue markings identify areas that must be preserved exactly. Use these markings as semantic guidance only; do not reproduce colored marks in the output."
-    : "No colored reference markings are supplied.";
   const common = [
     "Photorealistic real estate photo edit.",
     "Preserve an actual fixed kitchen installation exactly as present only when it is clearly identifiable by food-preparation features such as a continuous countertop, backsplash, sink, tap, cooktop, oven or integrated appliance, including its connected cabinetry and fixed island.",
@@ -394,7 +378,6 @@ function buildEditPrompt(payload) {
       ...common,
       "Task type: retouch the existing photo, not furniture removal.",
       maskGuidance,
-      guideGuidance,
       "Correct only the requested imperfection or local appearance change, including a marked wall or floor surface when requested. Do not remove furniture or redesign the room unless the current instruction explicitly requests it.",
       `Current user instruction: ${instruction || "Retouch the marked area naturally."}`,
       "Return the same room with a natural, invisible photographic retouch."
@@ -405,7 +388,6 @@ function buildEditPrompt(payload) {
     ...common,
     "Task type: remove existing furniture or movable objects.",
     maskGuidance,
-    guideGuidance,
     "Do not alter any floor surface that is already visible in the input image: preserve its exact material, plank or tile pattern, direction, plank width, seams, color, texture, wear, reflections and perspective.",
     "Where removed furniture or rugs reveal hidden floor, extend the nearest visible original flooring seamlessly with the same material, plank or tile direction, scale, seam alignment, color and perspective; never redesign or replace the floor.",
     "Reconstruct only newly revealed hidden areas of floor, walls and trim, together with necessary lighting and shadows.",

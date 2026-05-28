@@ -21,9 +21,10 @@ const modeHelp = document.querySelector("#modeHelp");
 const selectionCanvas = document.querySelector("#selectionCanvas");
 const brushSize = document.querySelector("#brushSize");
 const clearSelectionButton = document.querySelector("#clearSelectionButton");
-const selectionModeInputs = document.querySelectorAll('input[name="selectionMode"]');
 const activeJobStorageKey = "removeFurniture.activeJobId";
 const pollDelayMs = 2500;
+const maxEditEdge = 2048;
+const maxEditPixels = 3686400;
 
 let selectedFile = null;
 let originalDataUrl = null;
@@ -34,7 +35,6 @@ let workingFileName = null;
 let workingSize = null;
 let resultFile = null;
 let editMode = "remove";
-let selectionMode = "edit";
 let isBusy = false;
 let selectionStrokes = [];
 let activeStroke = null;
@@ -46,7 +46,6 @@ fileInput.addEventListener("change", () => handleFileSelection(fileInput));
 cameraInput.addEventListener("change", () => handleFileSelection(cameraInput));
 instructionInput.addEventListener("input", updateActionButtons);
 modeInputs.forEach((input) => input.addEventListener("change", handleModeChange));
-selectionModeInputs.forEach((input) => input.addEventListener("change", handleSelectionModeChange));
 cancelButton.addEventListener("click", () => {
   void cancelActiveJob();
 });
@@ -103,23 +102,17 @@ instructionForm.addEventListener("submit", (event) => {
 async function submitInstruction(value, operation) {
   if (!workingDataUrl || !workingSize) return;
   const editStrokeCount = countSelectionStrokes("edit");
-  const keepStrokeCount = countSelectionStrokes("keep");
   const hasEditMask = editStrokeCount > 0;
-  const hasGuide = selectionStrokes.length > 0;
-  const instruction = defaultInstruction(value.trim(), operation, hasEditMask);
+  const instruction = value.trim();
   if (!instruction) return;
 
   const operationName = operation === "retouch" ? "Retus" : "Odstraneni";
-  const selectionNote = [
-    hasEditMask ? "oznacena oblast k uprave" : "",
-    keepStrokeCount ? "oznacena oblast k ponechani" : ""
-  ].filter(Boolean).join(", ");
+  const selectionNote = hasEditMask ? "oznacena oblast" : "";
   appendChatMessage("user", `${operationName}${selectionNote ? ` (${selectionNote})` : ""}: ${instruction}`);
   instructionInput.value = "";
-  const maskData = hasEditMask ? createMaskDataUrl() : null;
-  const guideData = hasGuide ? await createGuideDataUrl() : null;
+  const maskData = hasEditMask ? true : null;
   updateActionButtons();
-  void requestEdit({ instruction, operation, maskData, guideData });
+  void requestEdit({ instruction, operation, maskData });
 }
 
 async function requestEdit(edit) {
@@ -136,22 +129,26 @@ async function requestEdit(edit) {
   showProcessingStatus("Odesilam fotku ke zpracovani...");
 
   try {
-    const maskedImage = editContext.maskData ? await convertImageDataUrlToPng(editContext.baseDataUrl) : null;
+    const maskedEdit = editContext.maskData
+      ? await prepareMaskedEdit(editContext.baseDataUrl, editContext.baseSize)
+      : null;
+    if (maskedEdit) {
+      editContext.maskData = maskedEdit.maskData;
+    }
     const response = await fetch("/api/remove-furniture", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        imageData: maskedImage || workingDataUrl,
-        mimeType: maskedImage ? "image/png" : workingMimeType,
-        fileName: maskedImage ? replaceExtension(workingFileName, "png") : workingFileName,
-        width: workingSize.width,
-        height: workingSize.height,
+        imageData: maskedEdit?.imageData || workingDataUrl,
+        mimeType: maskedEdit ? "image/png" : workingMimeType,
+        fileName: maskedEdit ? replaceExtension(workingFileName, "png") : workingFileName,
+        width: maskedEdit?.width || workingSize.width,
+        height: maskedEdit?.height || workingSize.height,
         operation: editContext.operation,
         instruction: editContext.instruction,
-        maskData: editContext.maskData,
-        guideData: editContext.guideData
+        maskData: editContext.maskData
       })
     });
 
@@ -197,9 +194,6 @@ function setBusy(busy) {
   });
   brushSize.disabled = busy || !canRequestEdit();
   clearSelectionButton.disabled = busy || selectionStrokes.length === 0;
-  selectionModeInputs.forEach((input) => {
-    input.disabled = busy || !canRequestEdit();
-  });
 }
 
 function resetResult() {
@@ -451,9 +445,6 @@ function updateActionButtons() {
   clearSelectionButton.disabled = isBusy || selectionStrokes.length === 0;
   cancelButton.disabled = !isBusy || !activeJobId;
   undoButton.disabled = isBusy || undoStack.length === 0;
-  selectionModeInputs.forEach((input) => {
-    input.disabled = isBusy || !canRequestEdit();
-  });
 }
 
 function resetConversation() {
@@ -476,20 +467,13 @@ function canRequestEdit() {
 }
 
 function canSubmitInstruction() {
-  if (!workingDataUrl) return false;
-  if (instructionInput.value.trim()) return true;
-  return editMode === "remove" && countSelectionStrokes("edit") > 0;
+  return Boolean(workingDataUrl && instructionInput.value.trim());
 }
 
 function handleModeChange(event) {
   if (!event.target.checked) return;
   editMode = event.target.value;
   updateModeCopy();
-}
-
-function handleSelectionModeChange(event) {
-  if (!event.target.checked) return;
-  selectionMode = event.target.value;
 }
 
 function updateModeCopy() {
@@ -500,8 +484,8 @@ function updateModeCopy() {
     return;
   }
 
-  modeHelp.textContent = 'Cervenou oznacte, co se ma odstranit. Modrou muzete oznacit, co ma zustat. Text je volitelny, pokud je oznacena cervena oblast.';
-  instructionInput.placeholder = "Napr. Odstran stul a zidle.";
+  modeHelp.textContent = 'Cervenou muzete oznacit misto, ktere mate na mysli. Do chatu vzdy napiste, co se ma stat.';
+  instructionInput.placeholder = "Napr. Odstran oznacenou skrin.";
   instructionButton.textContent = "Odstranit nabytek";
 }
 
@@ -513,7 +497,7 @@ function startSelectionStroke(event) {
   selectionCanvas.setPointerCapture(event.pointerId);
   const displayedRect = getDisplayedImageRect();
   activeStroke = {
-    type: selectionMode,
+    type: "edit",
     width: Number(brushSize.value) / Math.min(displayedRect.width, displayedRect.height),
     points: [point]
   };
@@ -582,16 +566,16 @@ function renderSelection() {
   context.scale(scale, scale);
   const imageRect = getDisplayedImageRect();
   for (const stroke of selectionStrokes) {
-    context.strokeStyle = strokeColor(stroke.type);
-    context.fillStyle = strokeColor(stroke.type);
+    context.strokeStyle = strokeColor();
+    context.fillStyle = strokeColor();
     paintStroke(context, stroke, imageRect);
   }
 }
 
-function createMaskDataUrl() {
+function createMaskDataUrl(width = workingSize.width, height = workingSize.height) {
   const canvas = document.createElement("canvas");
-  canvas.width = workingSize.width;
-  canvas.height = workingSize.height;
+  canvas.width = width;
+  canvas.height = height;
   const context = canvas.getContext("2d");
   context.fillStyle = "#000000";
   context.fillRect(0, 0, canvas.width, canvas.height);
@@ -600,45 +584,80 @@ function createMaskDataUrl() {
   for (const stroke of selectionStrokes.filter((item) => item.type === "edit")) {
     paintStroke(context, stroke, imageRect);
   }
-  context.globalCompositeOperation = "source-over";
-  context.strokeStyle = "#000000";
-  context.fillStyle = "#000000";
-  for (const stroke of selectionStrokes.filter((item) => item.type === "keep")) {
-    paintStroke(context, stroke, imageRect);
-  }
   return canvas.toDataURL("image/png");
 }
 
-async function createGuideDataUrl() {
-  const image = await loadImage(workingDataUrl);
+async function prepareMaskedEdit(baseDataUrl, baseSize) {
+  const image = await loadImage(baseDataUrl);
+  const size = supportedClientEditSize(baseSize.width, baseSize.height);
   const canvas = document.createElement("canvas");
-  canvas.width = workingSize.width;
-  canvas.height = workingSize.height;
+  canvas.width = size.width;
+  canvas.height = size.height;
   const context = canvas.getContext("2d");
-  context.drawImage(image, 0, 0, canvas.width, canvas.height);
-  const imageRect = { x: 0, y: 0, width: canvas.width, height: canvas.height };
+  context.drawImage(image, 0, 0, size.width, size.height);
 
-  for (const stroke of selectionStrokes) {
-    context.strokeStyle = stroke.type === "keep" ? "rgba(37, 99, 235, 0.72)" : "rgba(225, 29, 72, 0.72)";
-    context.fillStyle = context.strokeStyle;
-    paintStroke(context, stroke, imageRect);
-  }
-
-  return canvas.toDataURL("image/png");
+  return {
+    imageData: canvas.toDataURL("image/png"),
+    maskData: createMaskDataUrl(size.width, size.height),
+    width: size.width,
+    height: size.height
+  };
 }
 
-function strokeColor(type) {
-  return type === "keep" ? "rgba(37, 99, 235, 0.58)" : "rgba(225, 29, 72, 0.58)";
+function strokeColor() {
+  return "rgba(225, 29, 72, 0.58)";
 }
 
 function countSelectionStrokes(type) {
   return selectionStrokes.filter((stroke) => stroke.type === type).length;
 }
 
-function defaultInstruction(value, operation, hasEditMask) {
-  if (value) return value;
-  if (operation === "remove" && hasEditMask) return "Odstran oznacenou oblast.";
-  return "";
+function supportedClientEditSize(width, height) {
+  const ratio = width / height;
+  let nextWidth = width;
+  let nextHeight = height;
+
+  const maxEdge = Math.max(nextWidth, nextHeight);
+  if (maxEdge > maxEditEdge) {
+    const scale = maxEditEdge / maxEdge;
+    nextWidth *= scale;
+    nextHeight *= scale;
+  }
+
+  const pixels = nextWidth * nextHeight;
+  if (pixels > maxEditPixels) {
+    const scale = Math.sqrt(maxEditPixels / pixels);
+    nextWidth *= scale;
+    nextHeight *= scale;
+  }
+
+  if (Math.max(ratio, 1 / ratio) > 3) {
+    if (ratio > 3) {
+      nextWidth = nextHeight * 3;
+    } else {
+      nextHeight = nextWidth * 3;
+    }
+  }
+
+  nextWidth = roundToMultiple(nextWidth, 16);
+  nextHeight = roundToMultiple(nextHeight, 16);
+
+  while (nextWidth * nextHeight > maxEditPixels) {
+    if (nextWidth >= nextHeight) {
+      nextWidth -= 16;
+    } else {
+      nextHeight -= 16;
+    }
+  }
+
+  return {
+    width: Math.max(16, nextWidth),
+    height: Math.max(16, nextHeight)
+  };
+}
+
+function roundToMultiple(value, multiple) {
+  return Math.max(multiple, Math.round(value / multiple) * multiple);
 }
 
 async function lockEditToMask(payload, editContext) {
