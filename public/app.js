@@ -447,7 +447,7 @@ function updateActionButtons() {
 function resetConversation() {
   instructionInput.value = "";
   chatThread.replaceChildren();
-  appendChatMessage("assistant", "Zvolte akci, pripadne oznacte cast pracovni fotky a napiste zadani.");
+  appendChatMessage("assistant", "Nahrajte fotku, zvolte typ upravy a napiste zadani. Oznaceni na fotce slouzi jako ukazatel.");
   updateModeCopy();
 }
 

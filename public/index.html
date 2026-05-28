@@ -10,9 +10,10 @@
     <main class="app-shell">
       <section class="workspace" aria-label="Uprava fotky mistnosti">
         <div class="topbar">
-          <div>
+          <div class="brand-block">
+            <p class="eyebrow">AI realitni retus</p>
             <h1>Uprava fotky mistnosti</h1>
-            <p id="statusText">Nahrajte fotku mistnosti z telefonu nebo pocitace.</p>
+            <p id="statusText">Nahrajte fotku, oznacte problem a popiste pozadovanou upravu.</p>
           </div>
           <div class="upload-actions">
             <label class="file-button">
@@ -28,8 +29,11 @@
 
         <section class="edit-chat" aria-label="Zadani upravy">
           <div class="option-header">
-            <h2>Uprava fotky</h2>
-            <p>Kuchynska linka zustane vzdy zachovana.</p>
+            <div>
+              <p class="eyebrow">Krok 1</p>
+              <h2>Vyberte typ upravy</h2>
+            </div>
+            <p class="safety-note">Kuchynska linka zustane vzdy zachovana.</p>
           </div>
           <fieldset class="edit-modes">
             <legend>Zvolte akci</legend>
@@ -48,9 +52,9 @@
               </span>
             </label>
           </fieldset>
-          <p id="modeHelp" class="mode-help">Napiste napr. "Odstran stul a zidle", nebo predmet na pracovni fotce oznacte a napiste "Vymazat".</p>
+          <p id="modeHelp" class="mode-help">Cervenou jen ukazte predmet nebo misto, ktere mate na mysli. Do chatu vzdy napiste, co se ma stat.</p>
           <div id="chatThread" class="chat-thread" aria-live="polite">
-            <p class="chat-message assistant">Zvolte akci, pripadne oznacte cast pracovni fotky a napiste zadani.</p>
+            <p class="chat-message assistant">Nahrajte fotku, zvolte typ upravy a napiste zadani. Oznaceni na fotce slouzi jako ukazatel.</p>
           </div>
           <form id="instructionForm" class="chat-composer">
             <label class="visually-hidden" for="instructionInput">Instrukce k uprave fotky</label>
@@ -60,16 +64,22 @@
         </section>
 
         <div class="actions">
-          <button id="removeButton" class="primary" type="button" disabled>Odstranit vsechen nabytek</button>
-          <button id="cancelButton" type="button" disabled>Storno</button>
-          <button id="undoButton" type="button" disabled>Krok zpet</button>
-          <button id="shareButton" type="button" disabled>Sdilet / ulozit</button>
-          <a id="downloadButton" class="download disabled" href="#" download>Stahnout vysledek</a>
+          <div class="actions-primary">
+            <button id="removeButton" class="primary" type="button" disabled>Odstranit vsechen nabytek</button>
+          </div>
+          <div class="actions-secondary">
+            <button id="cancelButton" type="button" disabled>Storno</button>
+            <button id="undoButton" type="button" disabled>Krok zpet</button>
+            <button id="shareButton" type="button" disabled>Sdilet / ulozit</button>
+            <a id="downloadButton" class="download disabled" href="#" download>Stahnout vysledek</a>
+          </div>
         </div>
 
         <div class="preview-grid">
           <figure class="preview">
-            <figcaption>Puvodni fotka</figcaption>
+            <figcaption>
+              <span>Puvodni fotka</span>
+            </figcaption>
             <div class="image-frame empty" id="originalFrame">
               <img id="originalImage" alt="Puvodni fotka mistnosti">
               <span>Neni nahrana fotka</span>
@@ -78,7 +88,9 @@
 
           <figure class="preview">
             <div class="working-header">
-              <figcaption>Pracovni fotka / vysledek</figcaption>
+              <figcaption>
+                <span>Pracovni fotka / vysledek</span>
+              </figcaption>
               <div class="selection-tools" aria-label="Nastroje oznaceni oblasti">
                 <span class="selection-legend">Cervene oznaceni = ukazat predmet / misto</span>
                 <label for="brushSize">Velikost oznaceni</label>
