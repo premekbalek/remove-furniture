@@ -9,7 +9,7 @@ Aplikace podporuje dva navazujici rezimy:
 - `Odstranit nabytek`: nabytek lze popsat textem, nebo ho na pracovni fotce oznacit prstem ci mysi a zadat odstraneni.
 - `Retusovat fotku`: na pracovni fotce oznacte misto a do chatu napiste pozadovanou lokalni opravu.
 
-Rezimy lze kombinovat. Kazda dalsi uprava vychazi z posledniho vysledku, zatimco vlevo zustava puvodni fotka pro porovnani. Pri oznacovani lze cervenou barvou vyznacit oblast k uprave nebo odstraneni a modrou barvou oblast, ktera ma zustat zachovana. Vysledky se ukladaji jako JPG.
+Rezimy lze kombinovat. Kazda dalsi uprava vychazi z posledniho vysledku, zatimco vlevo zustava puvodni fotka pro porovnani. Pri oznacovani lze cervenou barvou vyznacit oblast k uprave nebo odstraneni a modrou barvou oblast, ktera ma zustat zachovana. Mimo cervene oznaceni se po navratu z API znovu pouzije puvodni pracovni fotka, aby se nezmenily neoznacene casti. Vysledky se ukladaji jako JPG.
 
 Tlacitko `Storno` zrusi sledovani probihajici ulohy a server uz jeji vysledek nepouzije. Tlacitko `Krok zpet` vrati posledni povedenou upravu v aktualne otevrene strance.
 

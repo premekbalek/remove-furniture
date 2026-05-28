@@ -125,11 +125,18 @@ async function submitInstruction(value, operation) {
 async function requestEdit(edit) {
   if (!workingDataUrl || !workingSize) return;
 
+  const editContext = {
+    ...edit,
+    baseDataUrl: workingDataUrl,
+    baseMimeType: workingMimeType,
+    baseFileName: workingFileName,
+    baseSize: { ...workingSize }
+  };
   setBusy(true);
   showProcessingStatus("Odesilam fotku ke zpracovani...");
 
   try {
-    const maskedImage = edit.maskData ? await convertImageDataUrlToPng(workingDataUrl) : null;
+    const maskedImage = editContext.maskData ? await convertImageDataUrlToPng(editContext.baseDataUrl) : null;
     const response = await fetch("/api/remove-furniture", {
       method: "POST",
       headers: {
@@ -141,10 +148,10 @@ async function requestEdit(edit) {
         fileName: maskedImage ? replaceExtension(workingFileName, "png") : workingFileName,
         width: workingSize.width,
         height: workingSize.height,
-        operation: edit.operation,
-        instruction: edit.instruction,
-        maskData: edit.maskData,
-        guideData: edit.guideData
+        operation: editContext.operation,
+        instruction: editContext.instruction,
+        maskData: editContext.maskData,
+        guideData: editContext.guideData
       })
     });
 
@@ -162,7 +169,7 @@ async function requestEdit(edit) {
     isCanceling = false;
     updateActionButtons();
     showProcessingStatus("Fotka se zpracovava. Muzete se vratit pozdeji.");
-    await pollEditJob(payload.jobId);
+    await pollEditJob(payload.jobId, editContext);
   } catch (error) {
     if (!isCanceling) {
       showEditError(error.message);
@@ -228,8 +235,11 @@ function showProcessingStatus(message) {
   statusText.textContent = message;
 }
 
-function showEditResult(payload) {
+async function showEditResult(payload, editContext = null) {
   spinner.hidden = true;
+  if (editContext?.maskData) {
+    payload = await lockEditToMask(payload, editContext);
+  }
   pushUndoState();
   workingDataUrl = payload.imageData;
   workingMimeType = payload.mimeType;
@@ -266,7 +276,7 @@ function showEditError(message) {
   statusText.textContent = `Fotku se nepodarilo upravit: ${message}`;
 }
 
-async function pollEditJob(jobId) {
+async function pollEditJob(jobId, editContext = null) {
   while (true) {
     let response;
     try {
@@ -288,7 +298,7 @@ async function pollEditJob(jobId) {
     if (payload.status === "completed") {
       localStorage.removeItem(activeJobStorageKey);
       if (isCanceling || activeJobId !== jobId) return;
-      showEditResult(payload);
+      await showEditResult(payload, editContext);
       return;
     }
 
@@ -590,6 +600,12 @@ function createMaskDataUrl() {
   for (const stroke of selectionStrokes.filter((item) => item.type === "edit")) {
     paintStroke(context, stroke, imageRect);
   }
+  context.globalCompositeOperation = "source-over";
+  context.strokeStyle = "#000000";
+  context.fillStyle = "#000000";
+  for (const stroke of selectionStrokes.filter((item) => item.type === "keep")) {
+    paintStroke(context, stroke, imageRect);
+  }
   return canvas.toDataURL("image/png");
 }
 
@@ -623,6 +639,58 @@ function defaultInstruction(value, operation, hasEditMask) {
   if (value) return value;
   if (operation === "remove" && hasEditMask) return "Odstran oznacenou oblast.";
   return "";
+}
+
+async function lockEditToMask(payload, editContext) {
+  const [baseImage, editedImage, maskImage] = await Promise.all([
+    loadImage(editContext.baseDataUrl),
+    loadImage(payload.imageData),
+    loadImage(editContext.maskData)
+  ]);
+  const width = payload.width || editedImage.naturalWidth;
+  const height = payload.height || editedImage.naturalHeight;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, width, height);
+  context.drawImage(baseImage, 0, 0, width, height);
+
+  const editedLayer = document.createElement("canvas");
+  editedLayer.width = width;
+  editedLayer.height = height;
+  const editedContext = editedLayer.getContext("2d");
+  editedContext.drawImage(editedImage, 0, 0, width, height);
+
+  const alphaMask = document.createElement("canvas");
+  alphaMask.width = width;
+  alphaMask.height = height;
+  const maskContext = alphaMask.getContext("2d");
+  maskContext.drawImage(maskImage, 0, 0, width, height);
+  const maskPixels = maskContext.getImageData(0, 0, width, height);
+  for (let index = 0; index < maskPixels.data.length; index += 4) {
+    const editableAlpha = 255 - maskPixels.data[index + 3];
+    maskPixels.data[index] = 255;
+    maskPixels.data[index + 1] = 255;
+    maskPixels.data[index + 2] = 255;
+    maskPixels.data[index + 3] = editableAlpha;
+  }
+  maskContext.putImageData(maskPixels, 0, 0);
+
+  editedContext.globalCompositeOperation = "destination-in";
+  editedContext.drawImage(alphaMask, 0, 0);
+  context.drawImage(editedLayer, 0, 0);
+
+  const imageData = canvas.toDataURL("image/jpeg", 0.96);
+  return {
+    ...payload,
+    imageData,
+    mimeType: "image/jpeg",
+    fileName: replaceExtension(payload.fileName || editContext.baseFileName || "mistnost-bez-nabytku.jpg", "jpg"),
+    width,
+    height
+  };
 }
 
 function pushUndoState() {
