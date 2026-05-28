@@ -478,8 +478,8 @@ function handleModeChange(event) {
 
 function updateModeCopy() {
   if (editMode === "retouch") {
-    modeHelp.textContent = 'Oznacte misto na pracovni fotce a napiste napr. "Odstran skvrnu na stene" nebo "Oprav poskozeni podlahy".';
-    instructionInput.placeholder = "Napr. Odstran skvrnu na stene.";
+    modeHelp.textContent = 'Oznacte misto na pracovni fotce a napiste napr. "Odstran skvrnu na stene", "Odstran zaclony" nebo "Oprav poskozeni podlahy".';
+    instructionInput.placeholder = "Napr. Odstran zaclony a ponech puvodni okno.";
     instructionButton.textContent = "Retusovat fotku";
     return;
   }

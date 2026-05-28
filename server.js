@@ -370,6 +370,8 @@ function buildEditPrompt(payload) {
     "A freestanding or living-room wall unit, display cabinet, vitrine, sideboard, bookcase, wardrobe, dresser or storage cabinet is not a kitchen, even if its wooden appearance resembles kitchen cabinetry.",
     "Preserve the original camera angle, room layout, architecture, built-in fixtures, materials, colors, exposure, contrast and overall image realism.",
     "Outside the explicitly requested local edit, preserve all visible surfaces, their patterns, color, texture, reflections and perspective.",
+    "Never change the room architecture or layout. Never add, remove, move, or redesign doors, windows, window openings, frames, radiators, ceiling edges, wall corners, switches or outlets unless the user explicitly asks for that exact architectural change.",
+    "When removing curtains, drapes, blinds, shades or window coverings, remove only the fabric or covering itself. Preserve the existing window opening, glass, frame, sill, wall, radiator, incoming daylight and shadows; reveal only the natural continuation of the already visible window and wall.",
     "Do not add new furniture, decor, text, logos, people, watermarks or unrealistic objects."
   ];
 
@@ -378,7 +380,8 @@ function buildEditPrompt(payload) {
       ...common,
       "Task type: retouch the existing photo, not furniture removal.",
       maskGuidance,
-      "Correct only the requested imperfection or local appearance change, including a marked wall or floor surface when requested. Do not remove furniture or redesign the room unless the current instruction explicitly requests it.",
+      "Correct only the requested imperfection or local appearance change, including a marked wall or floor surface when requested.",
+      "If the user asks to remove a local object or covering during retouching, remove only that named object inside the marked area and inpaint with the physically expected continuation of the existing scene. Do not replace it with a different object or architectural feature.",
       `Current user instruction: ${instruction || "Retouch the marked area naturally."}`,
       "Return the same room with a natural, invisible photographic retouch."
     ].join(" ");
@@ -393,6 +396,7 @@ function buildEditPrompt(payload) {
     "Reconstruct only newly revealed hidden areas of floor, walls and trim, together with necessary lighting and shadows.",
     "A described or marked freestanding storage item must be treated as removable furniture, not preserved as a kitchen.",
     "Remove only the object or objects identified in the current user instruction or marked region. If the user explicitly asks to remove everything, remove all movable furniture and loose objects except the preserved kitchen.",
+    "For curtains, drapes, blinds, shades or window coverings, remove only the fabric or covering and preserve the existing window, wall and daylight conditions.",
     "The preservation rules for a clearly identifiable fixed kitchen, architecture and already visible surfaces are mandatory. Do not use kitchen preservation to retain ambiguous storage furniture.",
     `Current user instruction: ${instruction || "Remove the marked movable object."}`,
     "Return the same room with the requested object removed and the revealed surfaces reconstructed naturally."
