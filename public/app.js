@@ -107,12 +107,12 @@ async function submitInstruction(value, operation) {
   if (!instruction) return;
 
   const operationName = operation === "retouch" ? "Retus" : "Odstraneni";
-  const selectionNote = hasEditMask ? "oznacena oblast" : "";
+  const selectionNote = hasEditMask ? "oznaceny predmet / misto" : "";
   appendChatMessage("user", `${operationName}${selectionNote ? ` (${selectionNote})` : ""}: ${instruction}`);
   instructionInput.value = "";
-  const maskData = hasEditMask ? true : null;
+  const markerData = hasEditMask ? true : null;
   updateActionButtons();
-  void requestEdit({ instruction, operation, maskData });
+  void requestEdit({ instruction, operation, markerData });
 }
 
 async function requestEdit(edit) {
@@ -129,11 +129,11 @@ async function requestEdit(edit) {
   showProcessingStatus("Odesilam fotku ke zpracovani...");
 
   try {
-    const maskedEdit = editContext.maskData
-      ? await prepareMaskedEdit(editContext.baseDataUrl, editContext.baseSize)
+    const markedEdit = editContext.markerData
+      ? await prepareMarkedEdit(editContext.baseDataUrl, editContext.baseSize)
       : null;
-    if (maskedEdit) {
-      editContext.maskData = maskedEdit.maskData;
+    if (markedEdit) {
+      editContext.markerData = markedEdit.markerData;
     }
     const response = await fetch("/api/remove-furniture", {
       method: "POST",
@@ -141,14 +141,14 @@ async function requestEdit(edit) {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        imageData: maskedEdit?.imageData || workingDataUrl,
-        mimeType: maskedEdit ? "image/png" : workingMimeType,
-        fileName: maskedEdit ? replaceExtension(workingFileName, "png") : workingFileName,
-        width: maskedEdit?.width || workingSize.width,
-        height: maskedEdit?.height || workingSize.height,
+        imageData: markedEdit?.imageData || workingDataUrl,
+        mimeType: markedEdit ? "image/jpeg" : workingMimeType,
+        fileName: workingFileName,
+        width: markedEdit?.width || workingSize.width,
+        height: markedEdit?.height || workingSize.height,
         operation: editContext.operation,
         instruction: editContext.instruction,
-        maskData: editContext.maskData
+        markerData: editContext.markerData
       })
     });
 
@@ -231,9 +231,6 @@ function showProcessingStatus(message) {
 
 async function showEditResult(payload, editContext = null) {
   spinner.hidden = true;
-  if (editContext?.maskData) {
-    payload = await lockEditToMask(payload, editContext);
-  }
   pushUndoState();
   workingDataUrl = payload.imageData;
   workingMimeType = payload.mimeType;
@@ -484,7 +481,7 @@ function updateModeCopy() {
     return;
   }
 
-  modeHelp.textContent = 'Cervenou muzete oznacit misto, ktere mate na mysli. Do chatu vzdy napiste, co se ma stat.';
+  modeHelp.textContent = 'Cervenou jen ukazte predmet nebo misto, ktere mate na mysli. Do chatu vzdy napiste, co se ma stat.';
   instructionInput.placeholder = "Napr. Odstran oznacenou skrin.";
   instructionButton.textContent = "Odstranit nabytek";
 }
@@ -572,33 +569,32 @@ function renderSelection() {
   }
 }
 
-function createMaskDataUrl(width = workingSize.width, height = workingSize.height) {
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext("2d");
-  context.fillStyle = "#000000";
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  context.globalCompositeOperation = "destination-out";
-  const imageRect = { x: 0, y: 0, width: canvas.width, height: canvas.height };
-  for (const stroke of selectionStrokes.filter((item) => item.type === "edit")) {
-    paintStroke(context, stroke, imageRect);
-  }
-  return canvas.toDataURL("image/png");
-}
-
-async function prepareMaskedEdit(baseDataUrl, baseSize) {
+async function prepareMarkedEdit(baseDataUrl, baseSize) {
   const image = await loadImage(baseDataUrl);
   const size = supportedClientEditSize(baseSize.width, baseSize.height);
-  const canvas = document.createElement("canvas");
-  canvas.width = size.width;
-  canvas.height = size.height;
-  const context = canvas.getContext("2d");
-  context.drawImage(image, 0, 0, size.width, size.height);
+  const baseCanvas = document.createElement("canvas");
+  baseCanvas.width = size.width;
+  baseCanvas.height = size.height;
+  const baseContext = baseCanvas.getContext("2d");
+  baseContext.fillStyle = "#ffffff";
+  baseContext.fillRect(0, 0, size.width, size.height);
+  baseContext.drawImage(image, 0, 0, size.width, size.height);
+
+  const markerCanvas = document.createElement("canvas");
+  markerCanvas.width = size.width;
+  markerCanvas.height = size.height;
+  const markerContext = markerCanvas.getContext("2d");
+  markerContext.drawImage(baseCanvas, 0, 0);
+  markerContext.strokeStyle = "rgba(225, 29, 72, 0.82)";
+  markerContext.fillStyle = "rgba(225, 29, 72, 0.82)";
+  const imageRect = { x: 0, y: 0, width: size.width, height: size.height };
+  for (const stroke of selectionStrokes.filter((item) => item.type === "edit")) {
+    paintStroke(markerContext, stroke, imageRect);
+  }
 
   return {
-    imageData: canvas.toDataURL("image/png"),
-    maskData: createMaskDataUrl(size.width, size.height),
+    imageData: baseCanvas.toDataURL("image/jpeg", 0.96),
+    markerData: markerCanvas.toDataURL("image/jpeg", 0.92),
     width: size.width,
     height: size.height
   };
@@ -658,58 +654,6 @@ function supportedClientEditSize(width, height) {
 
 function roundToMultiple(value, multiple) {
   return Math.max(multiple, Math.round(value / multiple) * multiple);
-}
-
-async function lockEditToMask(payload, editContext) {
-  const [baseImage, editedImage, maskImage] = await Promise.all([
-    loadImage(editContext.baseDataUrl),
-    loadImage(payload.imageData),
-    loadImage(editContext.maskData)
-  ]);
-  const width = payload.width || editedImage.naturalWidth;
-  const height = payload.height || editedImage.naturalHeight;
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext("2d");
-  context.fillStyle = "#ffffff";
-  context.fillRect(0, 0, width, height);
-  context.drawImage(baseImage, 0, 0, width, height);
-
-  const editedLayer = document.createElement("canvas");
-  editedLayer.width = width;
-  editedLayer.height = height;
-  const editedContext = editedLayer.getContext("2d");
-  editedContext.drawImage(editedImage, 0, 0, width, height);
-
-  const alphaMask = document.createElement("canvas");
-  alphaMask.width = width;
-  alphaMask.height = height;
-  const maskContext = alphaMask.getContext("2d");
-  maskContext.drawImage(maskImage, 0, 0, width, height);
-  const maskPixels = maskContext.getImageData(0, 0, width, height);
-  for (let index = 0; index < maskPixels.data.length; index += 4) {
-    const editableAlpha = 255 - maskPixels.data[index + 3];
-    maskPixels.data[index] = 255;
-    maskPixels.data[index + 1] = 255;
-    maskPixels.data[index + 2] = 255;
-    maskPixels.data[index + 3] = editableAlpha;
-  }
-  maskContext.putImageData(maskPixels, 0, 0);
-
-  editedContext.globalCompositeOperation = "destination-in";
-  editedContext.drawImage(alphaMask, 0, 0);
-  context.drawImage(editedLayer, 0, 0);
-
-  const imageData = canvas.toDataURL("image/jpeg", 0.96);
-  return {
-    ...payload,
-    imageData,
-    mimeType: "image/jpeg",
-    fileName: replaceExtension(payload.fileName || editContext.baseFileName || "mistnost-bez-nabytku.jpg", "jpg"),
-    width,
-    height
-  };
 }
 
 function pushUndoState() {

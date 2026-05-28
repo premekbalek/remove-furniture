@@ -79,7 +79,7 @@ async function handleRemoveFurniture(req, res) {
 
   const body = await readRequestBody(req, maxJsonBytes);
   const payload = JSON.parse(body);
-  const { imageData, mimeType, fileName, width, height, maskData } = payload;
+  const { imageData, mimeType, fileName, width, height, markerData } = payload;
 
   if (!imageData || !mimeType || !width || !height) {
     sendJson(res, 400, { error: "Chybi obrazek nebo jeho rozmery." });
@@ -95,13 +95,13 @@ async function handleRemoveFurniture(req, res) {
   const outputFormat = "jpeg";
   const base64 = String(imageData).replace(/^data:image\/[a-z0-9.+-]+;base64,/i, "");
   const imageBuffer = Buffer.from(base64, "base64");
-  let maskBuffer = null;
-  if (maskData) {
-    if (mimeType !== "image/png" || !String(maskData).startsWith("data:image/png;base64,")) {
-      sendJson(res, 400, { error: "Obrazek s oznacenim musi byt odeslan jako PNG maska." });
+  let markerBuffer = null;
+  if (markerData) {
+    if (!String(markerData).startsWith("data:image/jpeg;base64,")) {
+      sendJson(res, 400, { error: "Oznaceny referencni obrazek musi byt odeslan jako JPEG." });
       return;
     }
-    maskBuffer = Buffer.from(String(maskData).replace(/^data:image\/png;base64,/i, ""), "base64");
+    markerBuffer = Buffer.from(String(markerData).replace(/^data:image\/jpeg;base64,/i, ""), "base64");
   }
   const size = supportedImageSize(Number(width), Number(height));
   const extension = "jpg";
@@ -111,9 +111,11 @@ async function handleRemoveFurniture(req, res) {
   const form = new FormData();
   form.append("model", imageModel);
   form.append("prompt", prompt);
-  form.append("image", new File([imageBuffer], safeName, { type: mimeType }));
-  if (maskBuffer) {
-    form.append("mask", new File([maskBuffer], "oznacena-oblast.png", { type: "image/png" }));
+  if (markerBuffer) {
+    form.append("image[]", new File([imageBuffer], safeName, { type: mimeType }));
+    form.append("image[]", new File([markerBuffer], "oznaceny-predmet.jpg", { type: "image/jpeg" }));
+  } else {
+    form.append("image", new File([imageBuffer], safeName, { type: mimeType }));
   }
   form.append("size", `${size.width}x${size.height}`);
   form.append("quality", imageQuality);
@@ -361,9 +363,9 @@ function formatFromMime(mimeType) {
 function buildEditPrompt(payload) {
   const operation = payload.operation === "retouch" ? "retouch" : "remove";
   const instruction = sanitizeInstruction(payload.instruction);
-  const maskGuidance = payload.maskData
-    ? "A user-drawn mask is supplied. Only the transparent mask area may be edited. Keep every opaque mask area unchanged, even if the text instruction mentions nearby objects."
-    : "No drawn mask is supplied. Identify only the subject described in the user's current instruction.";
+  const markerGuidance = payload.markerData
+    ? "A second reference image is supplied with a red user mark. The red mark is only a pointer to identify the intended object or local area; it is not the full edit boundary. Remove or retouch the complete object or issue described by the user that the red mark points to. Do not leave half of the object behind just because only part of it was marked. Do not reproduce the red mark in the output."
+    : "No red reference mark is supplied. Identify only the subject described in the user's current instruction.";
   const common = [
     "Photorealistic real estate photo edit.",
     "Preserve an actual fixed kitchen installation exactly as present only when it is clearly identifiable by food-preparation features such as a continuous countertop, backsplash, sink, tap, cooktop, oven or integrated appliance, including its connected cabinetry and fixed island.",
@@ -379,7 +381,7 @@ function buildEditPrompt(payload) {
     return [
       ...common,
       "Task type: retouch the existing photo, not furniture removal.",
-      maskGuidance,
+      markerGuidance,
       "Correct only the requested imperfection or local appearance change, including a marked wall or floor surface when requested.",
       "If the user asks to remove a local object or covering during retouching, remove only that named object inside the marked area and inpaint with the physically expected continuation of the existing scene. Do not replace it with a different object or architectural feature.",
       `Current user instruction: ${instruction || "Retouch the marked area naturally."}`,
@@ -390,12 +392,12 @@ function buildEditPrompt(payload) {
   return [
     ...common,
     "Task type: remove existing furniture or movable objects.",
-    maskGuidance,
+    markerGuidance,
     "Do not alter any floor surface that is already visible in the input image: preserve its exact material, plank or tile pattern, direction, plank width, seams, color, texture, wear, reflections and perspective.",
     "Where removed furniture or rugs reveal hidden floor, extend the nearest visible original flooring seamlessly with the same material, plank or tile direction, scale, seam alignment, color and perspective; never redesign or replace the floor.",
     "Reconstruct only newly revealed hidden areas of floor, walls and trim, together with necessary lighting and shadows.",
     "A described or marked freestanding storage item must be treated as removable furniture, not preserved as a kitchen.",
-    "Remove only the object or objects identified in the current user instruction or marked region. If the user explicitly asks to remove everything, remove all movable furniture and loose objects except the preserved kitchen.",
+    "Remove the entire object or objects identified by the current user instruction and, when present, the red reference mark. If the mark touches only part of a chair, table, cabinet, curtain or other object, remove the complete referenced object, not only the marked pixels. If the user explicitly asks to remove everything, remove all movable furniture and loose objects except the preserved kitchen.",
     "For curtains, drapes, blinds, shades or window coverings, remove only the fabric or covering and preserve the existing window, wall and daylight conditions.",
     "The preservation rules for a clearly identifiable fixed kitchen, architecture and already visible surfaces are mandatory. Do not use kitchen preservation to retain ambiguous storage furniture.",
     `Current user instruction: ${instruction || "Remove the marked movable object."}`,
