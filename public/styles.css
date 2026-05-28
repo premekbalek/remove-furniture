@@ -8,6 +8,10 @@
   --accent: #0f766e;
   --accent-dark: #115e59;
   --accent-soft: #d9f1ed;
+  --edit-mark: #e11d48;
+  --edit-mark-soft: #ffe4e6;
+  --keep-mark: #2563eb;
+  --keep-mark-soft: #dbeafe;
   --danger: #b42318;
   --shadow: 0 18px 45px rgba(31, 36, 40, 0.12);
 }
@@ -314,8 +318,49 @@ figcaption {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
   color: var(--muted);
   font-size: 12px;
+}
+
+.selection-mode {
+  position: relative;
+}
+
+.selection-mode input {
+  position: absolute;
+  opacity: 0;
+}
+
+.selection-mode span {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+  color: var(--ink);
+  background: var(--panel);
+  cursor: pointer;
+}
+
+.selection-mode input:checked + span {
+  color: white;
+}
+
+.selection-mode.edit-mark input:checked + span {
+  border-color: var(--edit-mark);
+  background: var(--edit-mark);
+}
+
+.selection-mode.keep-mark input:checked + span {
+  border-color: var(--keep-mark);
+  background: var(--keep-mark);
+}
+
+.selection-mode input:focus-visible + span {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .selection-tools input {
