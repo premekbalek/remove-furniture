@@ -245,7 +245,8 @@ async function handleRemoveFurniture(req, res) {
   const size = supportedImageSize(Number(width), Number(height), isDraft);
   const extension = "jpg";
   const safeName = sanitizeFileName(fileName || `mistnost.${inputFormat === "jpeg" ? "jpg" : inputFormat}`);
-  const prompt = buildEditPrompt(payload);
+  const operation = normalizeEditOperation(payload.operation);
+  const prompt = buildEditPrompt({ ...payload, operation });
 
   const form = new FormData();
   form.append("model", imageModel);
@@ -257,11 +258,11 @@ async function handleRemoveFurniture(req, res) {
     form.append("image", new File([imageBuffer], safeName, { type: mimeType }));
   }
   form.append("size", `${size.width}x${size.height}`);
-  form.append("quality", isDraft ? "low" : imageQuality);
+  form.append("quality", isDraft ? "low" : operation === "web-quality" ? "high" : imageQuality);
   form.append("output_format", outputFormat);
 
   if (outputFormat === "jpeg" || outputFormat === "webp") {
-    form.append("output_compression", isDraft ? "60" : "40");
+    form.append("output_compression", isDraft ? "60" : operation === "web-quality" ? "30" : "40");
   }
 
   pruneEditJobs();
@@ -275,7 +276,7 @@ async function handleRemoveFurniture(req, res) {
 
   void processEditJob(jobId, {
     form,
-    operation: payload.operation,
+    operation,
     patch: payload.patch,
     outputFormat,
     extension,
@@ -602,7 +603,7 @@ function formatFromMime(mimeType) {
 }
 
 function buildEditPrompt(payload) {
-  const operation = ["retouch", "enhance"].includes(payload.operation) ? payload.operation : "remove";
+  const operation = normalizeEditOperation(payload.operation);
   const instruction = sanitizeInstruction(payload.instruction);
   const common = [
     "Photorealistic real estate photo edit.",
@@ -634,6 +635,31 @@ function buildEditPrompt(payload) {
     ].join(" ");
   }
 
+  if (operation === "web-quality") {
+    return [
+      ...common,
+      "Task type: final high-quality web output for a real-estate listing photo, not furniture removal and not virtual staging.",
+      "Keep the exact same room, composition, camera angle, layout and all objects. Do not add, remove, move, replace, redesign or restage anything.",
+      "Improve only image quality and web presentation: clean compression artifacts, reduce noise, refine fine detail, add natural sharpening, balance tones, improve local contrast, neutralize color cast and keep colors realistic.",
+      "The result should look crisp, clean and professional on a real-estate website, while remaining honest and natural.",
+      `Current user instruction: ${instruction || "Create a high-quality web-ready real-estate photo output."}`,
+      "Return the same photo content with higher perceived image quality."
+    ].join(" ");
+  }
+
+  if (operation === "privacy") {
+    return [
+      ...common,
+      "Task type: privacy cleanup and anonymization for a real-estate photo, not room clearing, not decluttering and not furniture removal.",
+      "Remove, blur or neutralize only private or identifying content: family photos, portraits, names on documents, letters, receipts, diplomas, children's drawings with names, visible faces in reflections, license plates, ID numbers and readable personal data.",
+      "If the private content is part of a larger object, such as a framed photo, paper on a table, diploma on a wall or magnet/photo on a fridge, alter only the identifying content and preserve the frame, furniture, wall, surface and surrounding object naturally.",
+      "Keep all furniture, decorations, clutter, plants, tableware, rugs, curtains, architecture, lighting, camera angle and room layout unchanged unless the item itself is private identifying content.",
+      "Do not generally tidy the room and do not remove ordinary decor.",
+      `Current user instruction: ${instruction || "Hide private identifying items only."}`,
+      "Return the same room with only private identifying content hidden naturally."
+    ].join(" ");
+  }
+
   const isRoomClearing = /vyklid|celou mistnost|vsechen pohyblivy|vsechen nabytek|clear the room|remove all furniture/i.test(instruction);
   const isDecluttering = /uklid pokoj|drobne volne|neporadek|osobni veci|declutter/i.test(instruction);
   const mentionsFloorCovering = /\b(rug|carpet)\b|koberec|koberecky|koberc/i.test(instruction);
@@ -654,6 +680,8 @@ function buildEditPrompt(payload) {
       ...common,
       "Task type: light decluttering, not room clearing and not furniture removal.",
       "Remove only small loose clutter, personal items and messy small objects lying on surfaces such as tables, dressers, shelves, the floor, seating or beds.",
+      "If the instruction asks to hide private or identifying items, remove, blur or neutralize only the identifying/private content such as family photos, names, documents, license plates, faces in reflections, IDs or readable personal text.",
+      "When anonymizing a personal item that sits on or inside furniture, preserve the supporting furniture, shelf, table, frame, wall and surrounding surface naturally.",
       "Keep all furniture and large items unchanged, including rugs/carpets, tables, chairs, sofas, armchairs, cabinets, shelves, curtains, wall art, lamps, plants, appliances and large decorations.",
       "Do not remove tableware or intentionally staged decor unless it clearly appears as small loose clutter requested by the user.",
       "Reconstruct only tiny newly visible surfaces naturally.",
@@ -676,6 +704,10 @@ function buildEditPrompt(payload) {
     `Current user instruction: ${instruction || "Remove the requested movable object."}`,
     "Return the same room with only the requested selected target removed naturally."
   ].join(" ");
+}
+
+function normalizeEditOperation(value) {
+  return ["retouch", "enhance", "web-quality", "privacy"].includes(value) ? value : "remove";
 }
 
 function sanitizeInstruction(value) {
@@ -777,6 +809,12 @@ function replaceExtension(fileName, extension) {
 
 function outputName(fileName, extension, operation = "remove") {
   const parsed = path.parse(fileName);
-  const suffix = operation === "enhance" ? "prodejni-foto" : "bez-nabytku";
+  const suffix = operation === "enhance"
+    ? "prodejni-foto"
+    : operation === "web-quality"
+      ? "web-kvalita"
+      : operation === "privacy"
+        ? "soukromi"
+        : "bez-nabytku";
   return `${parsed.name || "mistnost"}-${suffix}.${extension}`;
 }

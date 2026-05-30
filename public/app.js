@@ -2,7 +2,9 @@ const fileInput = document.querySelector("#fileInput");
 const cameraInput = document.querySelector("#cameraInput");
 const removeButton = document.querySelector("#removeButton");
 const cleanRoomButton = document.querySelector("#cleanRoomButton");
+const hidePrivateButton = document.querySelector("#hidePrivateButton");
 const enhanceButton = document.querySelector("#enhanceButton");
+const webQualityButton = document.querySelector("#webQualityButton");
 const cancelButton = document.querySelector("#cancelButton");
 const undoButton = document.querySelector("#undoButton");
 const shareButton = document.querySelector("#shareButton");
@@ -103,8 +105,15 @@ removeButton.addEventListener("click", () => {
 
 cleanRoomButton.addEventListener("click", () => {
   void submitInstruction(
-    "Uklid pokoj: odstran pouze drobne volne predmety, neporadek a osobni veci lezici na stolech, komodach, policich, podlaze, sedacim nabytku nebo posteli. Ponech vsechen nabytek, koberec, stoly, zidle, pohovky, kresla, skrine, police, zavesy, obrazy, lampy, rostliny, velke dekorace, spotrebice, architekturu, podlahu a perspektivu mistnosti. Nevyklizej pokoj a neodstranuj zadny vetsi predmet.",
+    "Uklid pokoj: odstran pouze drobne volne predmety, neporadek a osobni veci lezici na stolech, komodach, policich, podlaze, sedacim nabytku nebo posteli. Ponech vsechen nabytek, koberec, stoly, zidle, pohovky, kresla, skrine, police, zavesy, obrazy, lampy, rostliny, velke dekorace, spotrebice, architekturu, podlahu a perspektivu mistnosti. Nevyklizej pokoj a neodstranuj zadny vetsi predmet. Rodinne fotografie, obrazy, dekorace a predmety se sentimentalnim vzhledem ponech, pokud nejsou zjevny drobny neporadek.",
     "remove"
+  );
+});
+
+hidePrivateButton.addEventListener("click", () => {
+  void submitInstruction(
+    "Skryj osobni veci a citlive udaje: odstran nebo neutralizuj rodinne fotografie a portrety, jmena na dokumentech, dopisy, uctenky, diplomy, detske kresby se jmenem, viditelne obliceje v odrazech, SPZ, cisla dokladu a jine citelne osobni udaje. Pokud je osobni vec soucasti vetsiho predmetu, napr. fotka v ramecku nebo text na papiru, odstran nebo neutralizuj jen osobni obsah a ponech okolni nabytek, dekorace, povrchy, kompozici a realny stav mistnosti prirozene. Neuklizej pokoj obecne, neodstranuj nabytek ani bezne dekorace.",
+    "privacy"
   );
 });
 
@@ -115,12 +124,19 @@ enhanceButton.addEventListener("click", () => {
   );
 });
 
+webQualityButton.addEventListener("click", () => {
+  void submitInstruction(
+    "Finalni webova kvalita: vylepsi aktualni hotovou fotku pro zobrazeni na realitnim webu. Zachovej obsah, kompozici, predmety, dispozici a realisticky stav presne stejne. Uprav pouze cistotu obrazu, jemne doostreni, odsumeni, mikro-kontrast, tonovou vyvazenost, prirozene barvy a citelnost detailu. Vysledek ma byt kvalitni, cisty a profesionalni pro web, bez umeleho vzhledu.",
+    "web-quality"
+  );
+});
+
 async function submitInstruction(value, operation, options = {}) {
   if (!workingDataUrl || !workingSize) return;
   const instruction = value.trim();
   if (!instruction) return;
 
-  const operationName = operation === "enhance" ? "Profesionalni tuning" : "Odstraneni";
+  const operationName = operationLabel(operation);
   appendChatMessage("user", `${operationName}: ${instruction}`);
   updateActionButtons();
   void requestEdit({
@@ -141,9 +157,7 @@ async function requestEdit(edit) {
     baseSize: { ...workingSize }
   };
   setBusy(true);
-  showProcessingStatus(editContext.operation === "enhance"
-    ? "Odesilam fotku na profesionalni tuning..."
-    : "Odesilam fotku ke zpracovani...");
+  showProcessingStatus(processingStartMessage(editContext.operation));
 
   try {
     const requestImage = await prepareScaledEdit(editContext.baseDataUrl, editContext.baseSize, edit.draft);
@@ -178,9 +192,7 @@ async function requestEdit(edit) {
     activeJobId = payload.jobId;
     isCanceling = false;
     updateActionButtons();
-    showProcessingStatus(editContext.operation === "enhance"
-      ? "Profesionalni tuning se zpracovava. Muzete se vratit pozdeji."
-      : "Fotka se zpracovava. Muzete se vratit pozdeji.");
+    showProcessingStatus(processingWaitMessage(editContext.operation));
     await pollEditJob(payload.jobId, editContext);
   } catch (error) {
     if (!isCanceling) {
@@ -198,7 +210,9 @@ function setBusy(busy) {
   spinner.hidden = !busy;
   removeButton.disabled = busy || !canRequestEdit();
   cleanRoomButton.disabled = busy || !canRequestEdit();
+  hidePrivateButton.disabled = busy || !canRequestEdit();
   enhanceButton.disabled = busy || !canRequestEdit();
+  webQualityButton.disabled = busy || !canRequestEdit();
   cancelButton.disabled = !busy || !activeJobId;
   undoButton.disabled = busy || undoStack.length === 0;
   analyzeObjectsButton.disabled = busy || !canRequestEdit();
@@ -263,9 +277,7 @@ async function showEditResult(payload, editContext = null) {
   downloadButton.classList.remove("disabled");
   resultFile = dataUrlToFile(finalPayload.imageData, downloadButton.download, finalPayload.mimeType);
   shareButton.disabled = !canShareResult(resultFile);
-  appendChatMessage("assistant", editContext?.operation === "enhance"
-    ? "Profesionalni tuning je hotovy. Muzete pokracovat dalsi upravou."
-    : "Uprava je hotova. Muzete pokracovat dalsim odstranenim.");
+  appendChatMessage("assistant", completionMessage(editContext?.operation));
 
   const sizeNote = finalPayload.usedOriginalSize
     ? "Rozliseni zustalo stejne."
@@ -457,7 +469,9 @@ function replaceExtension(fileName, extension) {
 function updateActionButtons() {
   removeButton.disabled = isBusy || !canRequestEdit();
   cleanRoomButton.disabled = isBusy || !canRequestEdit();
+  hidePrivateButton.disabled = isBusy || !canRequestEdit();
   enhanceButton.disabled = isBusy || !canRequestEdit();
+  webQualityButton.disabled = isBusy || !canRequestEdit();
   analyzeObjectsButton.disabled = isBusy || !canRequestEdit();
   objectQueryInput.disabled = isBusy || !canRequestEdit();
   findObjectButton.disabled = isBusy || !canRequestEdit() || !objectQueryInput.value.trim();
@@ -482,6 +496,34 @@ function appendChatMessage(role, text) {
 
 function canRequestEdit() {
   return Boolean(workingDataUrl);
+}
+
+function operationLabel(operation) {
+  if (operation === "enhance") return "Profesionalni tuning";
+  if (operation === "web-quality") return "Webova kvalita";
+  if (operation === "privacy") return "Skryti osobnich veci";
+  return "Odstraneni";
+}
+
+function processingStartMessage(operation) {
+  if (operation === "enhance") return "Odesilam fotku na profesionalni tuning...";
+  if (operation === "web-quality") return "Odesilam fotku do webove kvality...";
+  if (operation === "privacy") return "Odesilam fotku na skryti osobnich veci...";
+  return "Odesilam fotku ke zpracovani...";
+}
+
+function processingWaitMessage(operation) {
+  if (operation === "enhance") return "Profesionalni tuning se zpracovava. Muzete se vratit pozdeji.";
+  if (operation === "web-quality") return "Webova kvalita se zpracovava. Muzete se vratit pozdeji.";
+  if (operation === "privacy") return "Skryti osobnich veci se zpracovava. Muzete se vratit pozdeji.";
+  return "Fotka se zpracovava. Muzete se vratit pozdeji.";
+}
+
+function completionMessage(operation) {
+  if (operation === "enhance") return "Profesionalni tuning je hotovy. Muzete pokracovat dalsi upravou.";
+  if (operation === "web-quality") return "Webova kvalita je hotova. Fotka je pripravena pro web.";
+  if (operation === "privacy") return "Skryti osobnich veci je hotove. Zkontrolujte, co se zmenilo.";
+  return "Uprava je hotova. Muzete pokracovat dalsim odstranenim.";
 }
 
 async function analyzeObjects() {
