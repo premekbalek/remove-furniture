@@ -31,41 +31,40 @@
           <div class="option-header">
             <div>
               <p class="eyebrow">Krok 1</p>
-              <h2>Vyberte typ upravy</h2>
+              <h2>Vyberte zpusob odstraneni</h2>
             </div>
-            <p class="safety-note">Kuchynska linka zustane vzdy zachovana.</p>
+            <p class="safety-note">Vyberte vse, uklid drobnosti, nebo konkretni predmety.</p>
           </div>
-          <fieldset class="edit-modes">
-            <legend>Zvolte akci</legend>
-            <label class="mode-option">
-              <input type="radio" name="editMode" value="remove" checked>
-              <span>
-                <strong>Odstranit nabytek</strong>
-                <small>Popiste nabytek nebo ho oznacte na fotce.</small>
-              </span>
+          <section class="object-picker" aria-label="Vyber predmetu podle popisu">
+            <div class="object-picker-header">
+              <div>
+                <strong>Vyber podle rozpoznanych predmetu</strong>
+                <p>Nechte model popsat predmety a skupiny veci. Kdyz neco chybi, doptejte se na konkretni vec.</p>
+              </div>
+              <button id="analyzeObjectsButton" type="button" disabled>Najit predmety</button>
+            </div>
+            <div id="objectList" class="object-list" hidden></div>
+            <form id="objectQueryForm" class="object-query">
+              <label class="visually-hidden" for="objectQueryInput">Dotaz na chybejici predmet</label>
+              <input id="objectQueryInput" type="text" placeholder="Napr. Vidis kytku u kresla?" disabled>
+              <button id="findObjectButton" type="submit" disabled>Doplnit cil</button>
+            </form>
+            <label class="prompt-editor" for="semanticPromptInput">
+              <span>Upravitelne zadani pro model</span>
+              <textarea id="semanticPromptInput" rows="5" placeholder="Vyberte predmety, nebo sem napiste vlastni presne zadani." disabled></textarea>
             </label>
-            <label class="mode-option">
-              <input type="radio" name="editMode" value="retouch">
-              <span>
-                <strong>Retusovat fotku</strong>
-                <small>Oznacte misto a napiste pozadovanou zmenu.</small>
-              </span>
-            </label>
-          </fieldset>
-          <p id="modeHelp" class="mode-help">Cervenou jen ukazte predmet nebo misto, ktere mate na mysli. Do chatu vzdy napiste, co se ma stat.</p>
+            <button id="removeSelectedObjectsButton" class="primary" type="button" disabled>Odstranit vybrane</button>
+          </section>
           <div id="chatThread" class="chat-thread" aria-live="polite">
-            <p class="chat-message assistant">Nahrajte fotku, zvolte typ upravy a napiste zadani. Oznaceni na fotce slouzi jako ukazatel.</p>
+            <p class="chat-message assistant">Nahrajte fotku, kliknete na Najit predmety a vyberte objekty nebo skupiny veci k odstraneni.</p>
           </div>
-          <form id="instructionForm" class="chat-composer">
-            <label class="visually-hidden" for="instructionInput">Instrukce k uprave fotky</label>
-            <textarea id="instructionInput" maxlength="1000" rows="2" placeholder="Napr. Odstran stul a zidle."></textarea>
-            <button id="instructionButton" class="primary" type="submit" disabled>Odstranit nabytek</button>
-          </form>
         </section>
 
         <div class="actions">
           <div class="actions-primary">
             <button id="removeButton" class="primary" type="button" disabled>Odstranit vsechen nabytek</button>
+            <button id="cleanRoomButton" class="experimental" type="button" disabled>Uklidit pokoj</button>
+            <button id="enhanceButton" class="experimental" type="button" disabled>Profesionalni tuning</button>
           </div>
           <div class="actions-secondary">
             <button id="cancelButton" type="button" disabled>Storno</button>
@@ -91,16 +90,9 @@
               <figcaption>
                 <span>Pracovni fotka / vysledek</span>
               </figcaption>
-              <div class="selection-tools" aria-label="Nastroje oznaceni oblasti">
-                <span class="selection-legend">Cervene oznaceni = ukazat predmet / misto</span>
-                <label for="brushSize">Velikost oznaceni</label>
-                <input id="brushSize" type="range" min="12" max="100" value="42">
-                <button id="clearSelectionButton" type="button" disabled>Smazat oznaceni</button>
-              </div>
             </div>
             <div class="image-frame empty" id="resultFrame">
               <img id="resultImage" alt="Pracovni fotka mistnosti">
-              <canvas id="selectionCanvas" class="selection-canvas" aria-label="Oznaceni oblasti pro upravu"></canvas>
               <div id="spinner" class="spinner" hidden></div>
               <span id="resultPlaceholder">Vysledek se zobrazi tady</span>
             </div>

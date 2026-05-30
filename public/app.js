@@ -1,6 +1,8 @@
 const fileInput = document.querySelector("#fileInput");
 const cameraInput = document.querySelector("#cameraInput");
 const removeButton = document.querySelector("#removeButton");
+const cleanRoomButton = document.querySelector("#cleanRoomButton");
+const enhanceButton = document.querySelector("#enhanceButton");
 const cancelButton = document.querySelector("#cancelButton");
 const undoButton = document.querySelector("#undoButton");
 const shareButton = document.querySelector("#shareButton");
@@ -13,18 +15,19 @@ const statusText = document.querySelector("#statusText");
 const resultPlaceholder = document.querySelector("#resultPlaceholder");
 const spinner = document.querySelector("#spinner");
 const chatThread = document.querySelector("#chatThread");
-const instructionForm = document.querySelector("#instructionForm");
-const instructionInput = document.querySelector("#instructionInput");
-const instructionButton = document.querySelector("#instructionButton");
-const modeInputs = document.querySelectorAll('input[name="editMode"]');
-const modeHelp = document.querySelector("#modeHelp");
-const selectionCanvas = document.querySelector("#selectionCanvas");
-const brushSize = document.querySelector("#brushSize");
-const clearSelectionButton = document.querySelector("#clearSelectionButton");
+const analyzeObjectsButton = document.querySelector("#analyzeObjectsButton");
+const objectList = document.querySelector("#objectList");
+const objectQueryForm = document.querySelector("#objectQueryForm");
+const objectQueryInput = document.querySelector("#objectQueryInput");
+const findObjectButton = document.querySelector("#findObjectButton");
+const semanticPromptInput = document.querySelector("#semanticPromptInput");
+const removeSelectedObjectsButton = document.querySelector("#removeSelectedObjectsButton");
 const activeJobStorageKey = "removeFurniture.activeJobId";
 const pollDelayMs = 2500;
-const maxEditEdge = 2048;
-const maxEditPixels = 3686400;
+const maxEditEdge = 1536;
+const maxEditPixels = 2359296;
+const draftEditEdge = 1024;
+const draftEditPixels = 1048576;
 
 let selectedFile = null;
 let originalDataUrl = null;
@@ -34,28 +37,30 @@ let workingMimeType = null;
 let workingFileName = null;
 let workingSize = null;
 let resultFile = null;
-let editMode = "remove";
 let isBusy = false;
-let selectionStrokes = [];
-let activeStroke = null;
 let undoStack = [];
 let activeJobId = null;
 let isCanceling = false;
+let detectedTargets = [];
 
 fileInput.addEventListener("change", () => handleFileSelection(fileInput));
 cameraInput.addEventListener("change", () => handleFileSelection(cameraInput));
-instructionInput.addEventListener("input", updateActionButtons);
-modeInputs.forEach((input) => input.addEventListener("change", handleModeChange));
+analyzeObjectsButton.addEventListener("click", () => {
+  void analyzeObjects();
+});
+removeSelectedObjectsButton.addEventListener("click", () => {
+  void removeSelectedObjects();
+});
+objectQueryForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void findObjectTarget();
+});
+objectQueryInput.addEventListener("input", updateActionButtons);
+semanticPromptInput.addEventListener("input", updateActionButtons);
 cancelButton.addEventListener("click", () => {
   void cancelActiveJob();
 });
 undoButton.addEventListener("click", undoLastEdit);
-clearSelectionButton.addEventListener("click", clearSelection);
-selectionCanvas.addEventListener("pointerdown", startSelectionStroke);
-selectionCanvas.addEventListener("pointermove", continueSelectionStroke);
-selectionCanvas.addEventListener("pointerup", endSelectionStroke);
-selectionCanvas.addEventListener("pointercancel", endSelectionStroke);
-window.addEventListener("resize", renderSelection);
 
 async function handleFileSelection(input) {
   const [file] = input.files;
@@ -74,45 +79,55 @@ async function handleFileSelection(input) {
   workingFileName = selectedFile.name;
   workingSize = originalSize;
   undoStack = [];
+  detectedTargets = [];
+  renderObjectTargets([]);
+  semanticPromptInput.value = "";
+  objectQueryInput.value = "";
 
   originalImage.src = originalDataUrl;
   originalFrame.classList.remove("empty");
   resultImage.src = workingDataUrl;
   resultFrame.classList.remove("empty");
   resultPlaceholder.hidden = true;
-  clearSelection();
   updateActionButtons();
   const conversionNote = normalized.converted ? " | prevedeno na JPEG pro zpracovani" : " | pripraveno pro zpracovani";
   statusText.textContent = `${selectedFile.name} | ${originalSize.width} x ${originalSize.height}px${conversionNote}`;
 }
 
 removeButton.addEventListener("click", () => {
-  clearSelection();
   void submitInstruction(
-    "Odstran vsechen pohyblivy nabytek a volne predmety. Nic krome kuchynske linky neponechavej.",
+    "Vyklid celou mistnost: odstran vsechen pohyblivy nabytek, dekorace a volne predmety. Zachovej architekturu mistnosti, steny, podlahu, strop, okna, dvere, radiatory, svetla a pevne vestavene prvky.",
     "remove"
   );
 });
 
-instructionForm.addEventListener("submit", (event) => {
-  event.preventDefault();
-  void submitInstruction(instructionInput.value, editMode);
+cleanRoomButton.addEventListener("click", () => {
+  void submitInstruction(
+    "Uklid pokoj: odstran pouze drobne volne predmety, neporadek a osobni veci lezici na stolech, komodach, policich, podlaze, sedacim nabytku nebo posteli. Ponech vsechen nabytek, koberec, stoly, zidle, pohovky, kresla, skrine, police, zavesy, obrazy, lampy, rostliny, velke dekorace, spotrebice, architekturu, podlahu a perspektivu mistnosti. Nevyklizej pokoj a neodstranuj zadny vetsi predmet.",
+    "remove"
+  );
 });
 
-async function submitInstruction(value, operation) {
+enhanceButton.addEventListener("click", () => {
+  void submitInstruction(
+    "Vylepsi fotku jako profesionalni interierovy fotograf pro prodej nemovitosti. Vysledek ma byt viditelne kvalitnejsi, svetlejsi, cistsi a prodejni, ale stale realisticky. Zachovej realny stav prostoru, vsechny predmety i dispozici. Uprav pouze expozici, vyvazeni bile, svetla, stiny, kontrast, barvy, ostrost, sum, svislice a celkovy realitni dojem.",
+    "enhance"
+  );
+});
+
+async function submitInstruction(value, operation, options = {}) {
   if (!workingDataUrl || !workingSize) return;
-  const editStrokeCount = countSelectionStrokes("edit");
-  const hasEditMask = editStrokeCount > 0;
   const instruction = value.trim();
   if (!instruction) return;
 
-  const operationName = operation === "retouch" ? "Retus" : "Odstraneni";
-  const selectionNote = hasEditMask ? "oznaceny predmet / misto" : "";
-  appendChatMessage("user", `${operationName}${selectionNote ? ` (${selectionNote})` : ""}: ${instruction}`);
-  instructionInput.value = "";
-  const markerData = hasEditMask ? true : null;
+  const operationName = operation === "enhance" ? "Profesionalni tuning" : "Odstraneni";
+  appendChatMessage("user", `${operationName}: ${instruction}`);
   updateActionButtons();
-  void requestEdit({ instruction, operation, markerData });
+  void requestEdit({
+    instruction,
+    operation,
+    draft: Boolean(options.draft)
+  });
 }
 
 async function requestEdit(edit) {
@@ -126,29 +141,27 @@ async function requestEdit(edit) {
     baseSize: { ...workingSize }
   };
   setBusy(true);
-  showProcessingStatus("Odesilam fotku ke zpracovani...");
+  showProcessingStatus(editContext.operation === "enhance"
+    ? "Odesilam fotku na profesionalni tuning..."
+    : "Odesilam fotku ke zpracovani...");
 
   try {
-    const markedEdit = editContext.markerData
-      ? await prepareMarkedEdit(editContext.baseDataUrl, editContext.baseSize)
-      : null;
-    if (markedEdit) {
-      editContext.markerData = markedEdit.markerData;
-    }
+    const requestImage = await prepareScaledEdit(editContext.baseDataUrl, editContext.baseSize, edit.draft);
+
     const response = await fetch("/api/remove-furniture", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        imageData: markedEdit?.imageData || workingDataUrl,
-        mimeType: markedEdit ? "image/jpeg" : workingMimeType,
+        imageData: requestImage.imageData,
+        mimeType: requestImage.mimeType,
         fileName: workingFileName,
-        width: markedEdit?.width || workingSize.width,
-        height: markedEdit?.height || workingSize.height,
+        width: requestImage.width,
+        height: requestImage.height,
         operation: editContext.operation,
         instruction: editContext.instruction,
-        markerData: editContext.markerData
+        draft: Boolean(edit.draft)
       })
     });
 
@@ -165,7 +178,9 @@ async function requestEdit(edit) {
     activeJobId = payload.jobId;
     isCanceling = false;
     updateActionButtons();
-    showProcessingStatus("Fotka se zpracovava. Muzete se vratit pozdeji.");
+    showProcessingStatus(editContext.operation === "enhance"
+      ? "Profesionalni tuning se zpracovava. Muzete se vratit pozdeji."
+      : "Fotka se zpracovava. Muzete se vratit pozdeji.");
     await pollEditJob(payload.jobId, editContext);
   } catch (error) {
     if (!isCanceling) {
@@ -182,18 +197,18 @@ function setBusy(busy) {
   isBusy = busy;
   spinner.hidden = !busy;
   removeButton.disabled = busy || !canRequestEdit();
+  cleanRoomButton.disabled = busy || !canRequestEdit();
+  enhanceButton.disabled = busy || !canRequestEdit();
   cancelButton.disabled = !busy || !activeJobId;
   undoButton.disabled = busy || undoStack.length === 0;
-  instructionInput.disabled = busy;
-  instructionButton.disabled = busy || !canSubmitInstruction();
+  analyzeObjectsButton.disabled = busy || !canRequestEdit();
+  objectQueryInput.disabled = busy || !canRequestEdit();
+  findObjectButton.disabled = busy || !canRequestEdit() || !objectQueryInput.value.trim();
+  semanticPromptInput.disabled = busy || !canRequestEdit();
+  removeSelectedObjectsButton.disabled = busy || !semanticPromptInput.value.trim();
   shareButton.disabled = busy || !canShareResult(resultFile);
   fileInput.disabled = busy;
   cameraInput.disabled = busy;
-  modeInputs.forEach((input) => {
-    input.disabled = busy;
-  });
-  brushSize.disabled = busy || !canRequestEdit();
-  clearSelectionButton.disabled = busy || selectionStrokes.length === 0;
 }
 
 function resetResult() {
@@ -215,7 +230,10 @@ function resetResult() {
   shareButton.disabled = true;
   undoButton.disabled = true;
   cancelButton.disabled = true;
-  clearSelection();
+  detectedTargets = [];
+  renderObjectTargets([]);
+  semanticPromptInput.value = "";
+  objectQueryInput.value = "";
 }
 
 function showProcessingStatus(message) {
@@ -232,25 +250,26 @@ function showProcessingStatus(message) {
 async function showEditResult(payload, editContext = null) {
   spinner.hidden = true;
   pushUndoState();
-  workingDataUrl = payload.imageData;
-  workingMimeType = payload.mimeType;
-  workingFileName = payload.fileName;
-  workingSize = { width: payload.width, height: payload.height };
-  resultImage.src = payload.imageData;
+  const finalPayload = payload;
+  workingDataUrl = finalPayload.imageData;
+  workingMimeType = finalPayload.mimeType;
+  workingFileName = finalPayload.fileName;
+  workingSize = { width: finalPayload.width, height: finalPayload.height };
+  resultImage.src = finalPayload.imageData;
   resultFrame.classList.remove("empty", "error");
   resultPlaceholder.hidden = true;
-  downloadButton.href = payload.imageData;
-  downloadButton.download = payload.fileName || "mistnost-bez-nabytku.jpg";
+  downloadButton.href = finalPayload.imageData;
+  downloadButton.download = finalPayload.fileName || "mistnost-bez-nabytku.jpg";
   downloadButton.classList.remove("disabled");
-  resultFile = dataUrlToFile(payload.imageData, downloadButton.download, payload.mimeType);
+  resultFile = dataUrlToFile(finalPayload.imageData, downloadButton.download, finalPayload.mimeType);
   shareButton.disabled = !canShareResult(resultFile);
-  updateModeCopy();
-  clearSelection();
-  appendChatMessage("assistant", "Uprava je hotova. Muzete pokracovat dalsim odstranenim nebo retusi.");
+  appendChatMessage("assistant", editContext?.operation === "enhance"
+    ? "Profesionalni tuning je hotovy. Muzete pokracovat dalsi upravou."
+    : "Uprava je hotova. Muzete pokracovat dalsim odstranenim.");
 
-  const sizeNote = payload.usedOriginalSize
+  const sizeNote = finalPayload.usedOriginalSize
     ? "Rozliseni zustalo stejne."
-    : `Webovy vystup: ${payload.width} x ${payload.height}px.`;
+    : `Webovy vystup: ${finalPayload.width} x ${finalPayload.height}px.`;
   statusText.textContent = `Hotovo. ${sizeNote}`;
 }
 
@@ -437,18 +456,20 @@ function replaceExtension(fileName, extension) {
 
 function updateActionButtons() {
   removeButton.disabled = isBusy || !canRequestEdit();
-  instructionButton.disabled = isBusy || !canSubmitInstruction();
-  brushSize.disabled = isBusy || !canRequestEdit();
-  clearSelectionButton.disabled = isBusy || selectionStrokes.length === 0;
+  cleanRoomButton.disabled = isBusy || !canRequestEdit();
+  enhanceButton.disabled = isBusy || !canRequestEdit();
+  analyzeObjectsButton.disabled = isBusy || !canRequestEdit();
+  objectQueryInput.disabled = isBusy || !canRequestEdit();
+  findObjectButton.disabled = isBusy || !canRequestEdit() || !objectQueryInput.value.trim();
+  semanticPromptInput.disabled = isBusy || !canRequestEdit();
+  removeSelectedObjectsButton.disabled = isBusy || !semanticPromptInput.value.trim();
   cancelButton.disabled = !isBusy || !activeJobId;
   undoButton.disabled = isBusy || undoStack.length === 0;
 }
 
 function resetConversation() {
-  instructionInput.value = "";
   chatThread.replaceChildren();
-  appendChatMessage("assistant", "Nahrajte fotku, zvolte typ upravy a napiste zadani. Oznaceni na fotce slouzi jako ukazatel.");
-  updateModeCopy();
+  appendChatMessage("assistant", "Nahrajte fotku, kliknete na Najit predmety a vyberte objekty nebo skupiny veci k odstraneni.");
 }
 
 function appendChatMessage(role, text) {
@@ -463,166 +484,212 @@ function canRequestEdit() {
   return Boolean(workingDataUrl);
 }
 
-function canSubmitInstruction() {
-  return Boolean(workingDataUrl && instructionInput.value.trim());
-}
+async function analyzeObjects() {
+  if (!workingDataUrl || !workingSize || isBusy) return;
+  setBusy(true);
+  statusText.textContent = "Hledam predmety a skupiny veci ve fotce...";
 
-function handleModeChange(event) {
-  if (!event.target.checked) return;
-  editMode = event.target.value;
-  updateModeCopy();
-}
+  try {
+    const image = await prepareScaledEdit(workingDataUrl, workingSize, true);
+    const response = await fetch("/api/analyze-objects", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        imageData: image.imageData,
+        mimeType: image.mimeType
+      })
+    });
+    const payload = await readJsonPayload(response);
+    if (!response.ok) {
+      throw new Error(payload.error || "Predmety se nepodarilo rozpoznat.");
+    }
 
-function updateModeCopy() {
-  if (editMode === "retouch") {
-    modeHelp.textContent = 'Oznacte misto na pracovni fotce a napiste napr. "Odstran skvrnu na stene", "Odstran zaclony" nebo "Oprav poskozeni podlahy".';
-    instructionInput.placeholder = "Napr. Odstran zaclony a ponech puvodni okno.";
-    instructionButton.textContent = "Retusovat fotku";
-    return;
-  }
-
-  modeHelp.textContent = 'Cervenou jen ukazte predmet nebo misto, ktere mate na mysli. Do chatu vzdy napiste, co se ma stat.';
-  instructionInput.placeholder = "Napr. Odstran oznacenou skrin.";
-  instructionButton.textContent = "Odstranit nabytek";
-}
-
-function startSelectionStroke(event) {
-  if (!canRequestEdit() || isBusy) return;
-  const point = selectionPoint(event);
-  if (!point) return;
-  event.preventDefault();
-  selectionCanvas.setPointerCapture(event.pointerId);
-  const displayedRect = getDisplayedImageRect();
-  activeStroke = {
-    type: "edit",
-    width: Number(brushSize.value) / Math.min(displayedRect.width, displayedRect.height),
-    points: [point]
-  };
-  selectionStrokes.push(activeStroke);
-  renderSelection();
-  updateActionButtons();
-}
-
-function continueSelectionStroke(event) {
-  if (!activeStroke || !selectionCanvas.hasPointerCapture(event.pointerId)) return;
-  const point = selectionPoint(event);
-  if (!point) return;
-  event.preventDefault();
-  activeStroke.points.push(point);
-  renderSelection();
-}
-
-function endSelectionStroke(event) {
-  if (!activeStroke) return;
-  if (selectionCanvas.hasPointerCapture(event.pointerId)) {
-    selectionCanvas.releasePointerCapture(event.pointerId);
-  }
-  activeStroke = null;
-  updateActionButtons();
-}
-
-function clearSelection() {
-  selectionStrokes = [];
-  activeStroke = null;
-  renderSelection();
-  clearSelectionButton.disabled = true;
-  updateActionButtons();
-}
-
-function selectionPoint(event) {
-  const frameRect = selectionCanvas.getBoundingClientRect();
-  const imageRect = getDisplayedImageRect();
-  const x = event.clientX - frameRect.left - imageRect.x;
-  const y = event.clientY - frameRect.top - imageRect.y;
-  if (x < 0 || y < 0 || x > imageRect.width || y > imageRect.height) return null;
-  return { x: x / imageRect.width, y: y / imageRect.height };
-}
-
-function getDisplayedImageRect() {
-  const width = selectionCanvas.clientWidth;
-  const height = selectionCanvas.clientHeight;
-  if (!workingSize || !width || !height) return { x: 0, y: 0, width, height };
-  const scale = Math.min(width / workingSize.width, height / workingSize.height);
-  const imageWidth = workingSize.width * scale;
-  const imageHeight = workingSize.height * scale;
-  return {
-    x: (width - imageWidth) / 2,
-    y: (height - imageHeight) / 2,
-    width: imageWidth,
-    height: imageHeight
-  };
-}
-
-function renderSelection() {
-  const width = selectionCanvas.clientWidth;
-  const height = selectionCanvas.clientHeight;
-  const scale = window.devicePixelRatio || 1;
-  selectionCanvas.width = Math.max(1, Math.round(width * scale));
-  selectionCanvas.height = Math.max(1, Math.round(height * scale));
-  const context = selectionCanvas.getContext("2d");
-  context.scale(scale, scale);
-  const imageRect = getDisplayedImageRect();
-  for (const stroke of selectionStrokes) {
-    context.strokeStyle = strokeColor();
-    context.fillStyle = strokeColor();
-    paintStroke(context, stroke, imageRect);
+    detectedTargets = Array.isArray(payload.targets) ? payload.targets : [];
+    renderObjectTargets(detectedTargets);
+    appendChatMessage("assistant", `Nasel jsem ${detectedTargets.length} moznych cilu. Vyberte predmety nebo skupiny a spustte odstraneni.`);
+    statusText.textContent = "Predmety jsou pripravene k vyberu.";
+  } catch (error) {
+    showEditError(error.message);
+  } finally {
+    setBusy(false);
   }
 }
 
-async function prepareMarkedEdit(baseDataUrl, baseSize) {
+async function findObjectTarget() {
+  const query = objectQueryInput.value.trim();
+  if (!workingDataUrl || !workingSize || !query || isBusy) return;
+  setBusy(true);
+  statusText.textContent = "Hledam konkretni predmet ve fotce...";
+
+  try {
+    const image = await prepareScaledEdit(workingDataUrl, workingSize, true);
+    const response = await fetch("/api/find-object", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        imageData: image.imageData,
+        mimeType: image.mimeType,
+        query
+      })
+    });
+    const payload = await readJsonPayload(response);
+    if (!response.ok) {
+      throw new Error(payload.error || "Predmet se nepodarilo najit.");
+    }
+
+    if (!payload.found || !payload.target) {
+      appendChatMessage("assistant", payload.message || "Tenhle predmet ve fotce nevidim dostatecne jasne.");
+      statusText.textContent = "Predmet nebyl spolehlive nalezen.";
+      return;
+    }
+
+    const target = {
+      ...payload.target,
+      id: uniqueTargetId(payload.target.id || "manual")
+    };
+    detectedTargets = [...detectedTargets, target];
+    renderObjectTargets(detectedTargets);
+    const checkbox = objectList.querySelector(`input[value="${CSS.escape(target.id)}"]`);
+    if (checkbox) checkbox.checked = true;
+    semanticPromptInput.value = buildSemanticRemovalPrompt(selectedObjectTargets());
+    objectQueryInput.value = "";
+    appendChatMessage("assistant", `Doplnil jsem cil: ${target.label}.`);
+    statusText.textContent = "Predmet byl doplnen do seznamu.";
+  } catch (error) {
+    showEditError(error.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
+function renderObjectTargets(targets) {
+  objectList.replaceChildren();
+  objectList.hidden = targets.length === 0;
+
+  for (const target of targets) {
+    const label = document.createElement("label");
+    label.className = "object-target";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.value = target.id;
+    checkbox.addEventListener("change", () => {
+      semanticPromptInput.value = buildSemanticRemovalPrompt(selectedObjectTargets());
+      updateActionButtons();
+    });
+
+    const content = document.createElement("span");
+    const title = document.createElement("strong");
+    title.textContent = target.label || target.id;
+    const description = document.createElement("small");
+    description.textContent = [target.description, target.location].filter(Boolean).join(" | ");
+
+    content.append(title, description);
+    label.append(checkbox, content);
+    objectList.append(label);
+  }
+
+  updateActionButtons();
+}
+
+function selectedObjectTargets() {
+  const selectedIds = new Set(
+    [...objectList.querySelectorAll('input[type="checkbox"]:checked')].map((input) => input.value)
+  );
+  return detectedTargets.filter((target) => selectedIds.has(target.id));
+}
+
+function uniqueTargetId(base) {
+  const normalized = String(base || "manual").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 24) || "manual";
+  const existing = new Set(detectedTargets.map((target) => target.id));
+  let next = normalized;
+  let index = 1;
+  while (existing.has(next)) {
+    index += 1;
+    next = `${normalized}_${index}`;
+  }
+  return next;
+}
+
+async function removeSelectedObjects() {
+  const targets = selectedObjectTargets();
+  const instruction = semanticPromptInput.value.trim() || buildSemanticRemovalPrompt(targets);
+  if (!instruction) return;
+  await submitInstruction(instruction, "remove", { forceNoMask: true });
+}
+
+function buildSemanticRemovalPrompt(targets) {
+  const removeLines = targets.map((target) => {
+    const removePrompt = target.removePromptCs || target.description || target.label;
+    return `- ${target.id}: ${removePrompt}`;
+  });
+  const selectedIds = new Set(targets.map((target) => target.id));
+  const unselectedLines = detectedTargets
+    .filter((target) => !selectedIds.has(target.id))
+    .slice(0, 10)
+    .map((target) => `- ${target.label}: ${target.description || target.location || "nevybrany predmet"}`);
+  const hasRugTarget = targets.some((target) => {
+    const text = `${target.label} ${target.description} ${target.removePromptCs}`.toLowerCase();
+    return text.includes("koberec") || text.includes("rug") || text.includes("carpet");
+  });
+
+  return [
+    "Toto je cilena lokalni uprava, ne uklid ani vyklizeni mistnosti.",
+    "Odstran pouze tyto vybrane predmety nebo skupiny:",
+    ...removeLines,
+    "Kazdy vybrany cil interpretuj podle vzhledu, polohy a vztahu k okolnim predmetum.",
+    "Neodstranuj zadny jiny nabytek, dekorace ani volne predmety jen proto, ze jsou pohyblive.",
+    "Pokud je vybrany cil skupina volnych veci na povrchu, odstran vsechny volne pohyblive veci v teto skupine, ale ponech samotny nosny nabytek nebo povrch.",
+    "Ponech beze zmeny:",
+    "- vsechny nevybrane predmety, nabytek a dekorace",
+    hasRugTarget ? "- stul, zidle, kresla, skrine, police, veci na stole, veci ve skrini a vsechny predmety na nabytku; pokud se odstranuje koberec, odstran pouze koberec" : "",
+    ...unselectedLines,
+    "- okna, dvere, radiator, steny, strop, svetlo, podlahu a perspektivu mistnosti",
+    "- nosny nabytek nebo povrch, pokud se odstranuji pouze volne predmety na nem",
+    "Vsechny nevybrane predmety ponech beze zmeny. Rekonstruuj pouze nove odkryty povrch prirozene."
+  ].filter(Boolean).join("\n");
+}
+
+async function prepareScaledEdit(baseDataUrl, baseSize, draft = false) {
   const image = await loadImage(baseDataUrl);
-  const size = supportedClientEditSize(baseSize.width, baseSize.height);
-  const baseCanvas = document.createElement("canvas");
-  baseCanvas.width = size.width;
-  baseCanvas.height = size.height;
-  const baseContext = baseCanvas.getContext("2d");
-  baseContext.fillStyle = "#ffffff";
-  baseContext.fillRect(0, 0, size.width, size.height);
-  baseContext.drawImage(image, 0, 0, size.width, size.height);
-
-  const markerCanvas = document.createElement("canvas");
-  markerCanvas.width = size.width;
-  markerCanvas.height = size.height;
-  const markerContext = markerCanvas.getContext("2d");
-  markerContext.drawImage(baseCanvas, 0, 0);
-  markerContext.strokeStyle = "rgba(225, 29, 72, 0.82)";
-  markerContext.fillStyle = "rgba(225, 29, 72, 0.82)";
-  const imageRect = { x: 0, y: 0, width: size.width, height: size.height };
-  for (const stroke of selectionStrokes.filter((item) => item.type === "edit")) {
-    paintStroke(markerContext, stroke, imageRect);
-  }
+  const size = supportedClientEditSize(baseSize.width, baseSize.height, draft);
+  const canvas = document.createElement("canvas");
+  canvas.width = size.width;
+  canvas.height = size.height;
+  const context = canvas.getContext("2d");
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, size.width, size.height);
+  context.drawImage(image, 0, 0, size.width, size.height);
 
   return {
-    imageData: baseCanvas.toDataURL("image/jpeg", 0.96),
-    markerData: markerCanvas.toDataURL("image/jpeg", 0.92),
+    imageData: canvas.toDataURL("image/jpeg", draft ? 0.82 : 0.9),
+    mimeType: "image/jpeg",
     width: size.width,
     height: size.height
   };
 }
 
-function strokeColor() {
-  return "rgba(225, 29, 72, 0.58)";
-}
-
-function countSelectionStrokes(type) {
-  return selectionStrokes.filter((stroke) => stroke.type === type).length;
-}
-
-function supportedClientEditSize(width, height) {
+function supportedClientEditSize(width, height, draft = false) {
   const ratio = width / height;
   let nextWidth = width;
   let nextHeight = height;
+  const targetMaxEdge = draft ? draftEditEdge : maxEditEdge;
+  const targetMaxPixels = draft ? draftEditPixels : maxEditPixels;
 
   const maxEdge = Math.max(nextWidth, nextHeight);
-  if (maxEdge > maxEditEdge) {
-    const scale = maxEditEdge / maxEdge;
+  if (maxEdge > targetMaxEdge) {
+    const scale = targetMaxEdge / maxEdge;
     nextWidth *= scale;
     nextHeight *= scale;
   }
 
   const pixels = nextWidth * nextHeight;
-  if (pixels > maxEditPixels) {
-    const scale = Math.sqrt(maxEditPixels / pixels);
+  if (pixels > targetMaxPixels) {
+    const scale = Math.sqrt(targetMaxPixels / pixels);
     nextWidth *= scale;
     nextHeight *= scale;
   }
@@ -638,7 +705,7 @@ function supportedClientEditSize(width, height) {
   nextWidth = roundToMultiple(nextWidth, 16);
   nextHeight = roundToMultiple(nextHeight, 16);
 
-  while (nextWidth * nextHeight > maxEditPixels) {
+  while (nextWidth * nextHeight > targetMaxPixels) {
     if (nextWidth >= nextHeight) {
       nextWidth -= 16;
     } else {
@@ -682,7 +749,6 @@ function undoLastEdit() {
   downloadButton.classList.remove("disabled");
   resultFile = dataUrlToFile(workingDataUrl, downloadButton.download, workingMimeType);
   shareButton.disabled = !canShareResult(resultFile);
-  clearSelection();
   appendChatMessage("assistant", "Vracim posledni krok. Muzete zadat upravu znovu.");
   statusText.textContent = "Vraceno o jeden krok zpet.";
   updateActionButtons();
@@ -710,30 +776,6 @@ async function cancelActiveJob() {
   statusText.textContent = "Zpracovani bylo zruseno.";
   appendChatMessage("assistant", "Zpracovani bylo zruseno. Zadani muzete upravit a spustit znovu.");
   updateActionButtons();
-}
-
-function paintStroke(context, stroke, imageRect) {
-  const lineWidth = stroke.width * Math.min(imageRect.width, imageRect.height);
-  const firstPoint = stroke.points[0];
-  if (!firstPoint) return;
-  context.lineCap = "round";
-  context.lineJoin = "round";
-  context.lineWidth = lineWidth;
-  context.beginPath();
-  context.moveTo(imageRect.x + firstPoint.x * imageRect.width, imageRect.y + firstPoint.y * imageRect.height);
-  for (const point of stroke.points.slice(1)) {
-    context.lineTo(imageRect.x + point.x * imageRect.width, imageRect.y + point.y * imageRect.height);
-  }
-  context.stroke();
-  context.beginPath();
-  context.arc(
-    imageRect.x + firstPoint.x * imageRect.width,
-    imageRect.y + firstPoint.y * imageRect.height,
-    lineWidth / 2,
-    0,
-    Math.PI * 2
-  );
-  context.fill();
 }
 
 void resumePendingJob();
