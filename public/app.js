@@ -13,6 +13,7 @@ const originalImage = document.querySelector("#originalImage");
 const resultImage = document.querySelector("#resultImage");
 const originalFrame = document.querySelector("#originalFrame");
 const resultFrame = document.querySelector("#resultFrame");
+const markerCanvas = document.querySelector("#markerCanvas");
 const statusText = document.querySelector("#statusText");
 const resultPlaceholder = document.querySelector("#resultPlaceholder");
 const spinner = document.querySelector("#spinner");
@@ -24,6 +25,16 @@ const objectQueryInput = document.querySelector("#objectQueryInput");
 const findObjectButton = document.querySelector("#findObjectButton");
 const semanticPromptInput = document.querySelector("#semanticPromptInput");
 const removeSelectedObjectsButton = document.querySelector("#removeSelectedObjectsButton");
+const removeMarkModeButton = document.querySelector("#removeMarkModeButton");
+const keepMarkModeButton = document.querySelector("#keepMarkModeButton");
+const clearMarksButton = document.querySelector("#clearMarksButton");
+const markerList = document.querySelector("#markerList");
+const createPlanButton = document.querySelector("#createPlanButton");
+const editPlanInput = document.querySelector("#editPlanInput");
+const planQuestionForm = document.querySelector("#planQuestionForm");
+const planQuestionInput = document.querySelector("#planQuestionInput");
+const revisePlanButton = document.querySelector("#revisePlanButton");
+const runPlanButton = document.querySelector("#runPlanButton");
 const activeJobStorageKey = "removeFurniture.activeJobId";
 const pollDelayMs = 2500;
 const maxEditEdge = 1536;
@@ -44,6 +55,8 @@ let undoStack = [];
 let activeJobId = null;
 let isCanceling = false;
 let detectedTargets = [];
+let markers = [];
+let markerMode = "remove";
 
 fileInput.addEventListener("change", () => handleFileSelection(fileInput));
 cameraInput.addEventListener("change", () => handleFileSelection(cameraInput));
@@ -59,6 +72,23 @@ objectQueryForm.addEventListener("submit", (event) => {
 });
 objectQueryInput.addEventListener("input", updateActionButtons);
 semanticPromptInput.addEventListener("input", updateActionButtons);
+editPlanInput.addEventListener("input", updateActionButtons);
+planQuestionInput.addEventListener("input", updateActionButtons);
+removeMarkModeButton.addEventListener("click", () => setMarkerMode("remove"));
+keepMarkModeButton.addEventListener("click", () => setMarkerMode("keep"));
+clearMarksButton.addEventListener("click", clearMarkers);
+createPlanButton.addEventListener("click", () => {
+  void createEditPlan();
+});
+runPlanButton.addEventListener("click", () => {
+  void runEditPlan();
+});
+planQuestionForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void reviseEditPlan();
+});
+markerCanvas.addEventListener("click", handleMarkerCanvasClick);
+window.addEventListener("resize", drawMarkers);
 cancelButton.addEventListener("click", () => {
   void cancelActiveJob();
 });
@@ -82,13 +112,18 @@ async function handleFileSelection(input) {
   workingSize = originalSize;
   undoStack = [];
   detectedTargets = [];
+  markers = [];
   renderObjectTargets([]);
+  renderMarkers();
   semanticPromptInput.value = "";
   objectQueryInput.value = "";
+  editPlanInput.value = "";
+  planQuestionInput.value = "";
 
   originalImage.src = originalDataUrl;
   originalFrame.classList.remove("empty");
   resultImage.src = workingDataUrl;
+  resultImage.addEventListener("load", drawMarkers, { once: true });
   resultFrame.classList.remove("empty");
   resultPlaceholder.hidden = true;
   updateActionButtons();
@@ -220,6 +255,14 @@ function setBusy(busy) {
   findObjectButton.disabled = busy || !canRequestEdit() || !objectQueryInput.value.trim();
   semanticPromptInput.disabled = busy || !canRequestEdit();
   removeSelectedObjectsButton.disabled = busy || !semanticPromptInput.value.trim();
+  removeMarkModeButton.disabled = busy || !canRequestEdit();
+  keepMarkModeButton.disabled = busy || !canRequestEdit();
+  clearMarksButton.disabled = busy || markers.length === 0;
+  createPlanButton.disabled = busy || !canRequestEdit() || markers.length === 0;
+  editPlanInput.disabled = busy || !canRequestEdit();
+  planQuestionInput.disabled = busy || !canRequestEdit();
+  revisePlanButton.disabled = busy || !canRequestEdit() || markers.length === 0 || !planQuestionInput.value.trim();
+  runPlanButton.disabled = busy || !canRequestEdit() || !editPlanInput.value.trim();
   shareButton.disabled = busy || !canShareResult(resultFile);
   fileInput.disabled = busy;
   cameraInput.disabled = busy;
@@ -245,9 +288,13 @@ function resetResult() {
   undoButton.disabled = true;
   cancelButton.disabled = true;
   detectedTargets = [];
+  markers = [];
   renderObjectTargets([]);
+  renderMarkers();
   semanticPromptInput.value = "";
   objectQueryInput.value = "";
+  editPlanInput.value = "";
+  planQuestionInput.value = "";
 }
 
 function showProcessingStatus(message) {
@@ -269,7 +316,11 @@ async function showEditResult(payload, editContext = null) {
   workingMimeType = finalPayload.mimeType;
   workingFileName = finalPayload.fileName;
   workingSize = { width: finalPayload.width, height: finalPayload.height };
+  markers = [];
+  editPlanInput.value = "";
+  planQuestionInput.value = "";
   resultImage.src = finalPayload.imageData;
+  resultImage.addEventListener("load", drawMarkers, { once: true });
   resultFrame.classList.remove("empty", "error");
   resultPlaceholder.hidden = true;
   downloadButton.href = finalPayload.imageData;
@@ -277,6 +328,7 @@ async function showEditResult(payload, editContext = null) {
   downloadButton.classList.remove("disabled");
   resultFile = dataUrlToFile(finalPayload.imageData, downloadButton.download, finalPayload.mimeType);
   shareButton.disabled = !canShareResult(resultFile);
+  renderMarkers();
   appendChatMessage("assistant", completionMessage(editContext?.operation));
 
   const sizeNote = finalPayload.usedOriginalSize
@@ -477,13 +529,21 @@ function updateActionButtons() {
   findObjectButton.disabled = isBusy || !canRequestEdit() || !objectQueryInput.value.trim();
   semanticPromptInput.disabled = isBusy || !canRequestEdit();
   removeSelectedObjectsButton.disabled = isBusy || !semanticPromptInput.value.trim();
+  removeMarkModeButton.disabled = isBusy || !canRequestEdit();
+  keepMarkModeButton.disabled = isBusy || !canRequestEdit();
+  clearMarksButton.disabled = isBusy || markers.length === 0;
+  createPlanButton.disabled = isBusy || !canRequestEdit() || markers.length === 0;
+  editPlanInput.disabled = isBusy || !canRequestEdit();
+  planQuestionInput.disabled = isBusy || !canRequestEdit();
+  revisePlanButton.disabled = isBusy || !canRequestEdit() || markers.length === 0 || !planQuestionInput.value.trim();
+  runPlanButton.disabled = isBusy || !canRequestEdit() || !editPlanInput.value.trim();
   cancelButton.disabled = !isBusy || !activeJobId;
   undoButton.disabled = isBusy || undoStack.length === 0;
 }
 
 function resetConversation() {
   chatThread.replaceChildren();
-  appendChatMessage("assistant", "Nahrajte fotku, kliknete na Najit predmety a vyberte objekty nebo skupiny veci k odstraneni.");
+  appendChatMessage("assistant", "Nahrajte fotku. Muzete vybrat rozpoznane predmety, nebo kliknout znacky do pracovni fotky a nechat model vytvorit plan upravy.");
 }
 
 function appendChatMessage(role, text) {
@@ -524,6 +584,229 @@ function completionMessage(operation) {
   if (operation === "web-quality") return "Webova kvalita je hotova. Fotka je pripravena pro web.";
   if (operation === "privacy") return "Skryti osobnich veci je hotove. Zkontrolujte, co se zmenilo.";
   return "Uprava je hotova. Muzete pokracovat dalsim odstranenim.";
+}
+
+function setMarkerMode(mode) {
+  markerMode = mode;
+  removeMarkModeButton.classList.toggle("active", mode === "remove");
+  keepMarkModeButton.classList.toggle("active", mode === "keep");
+}
+
+function handleMarkerCanvasClick(event) {
+  if (!workingDataUrl || isBusy) return;
+  const imageRect = displayedImageRect();
+  if (!imageRect) return;
+  const clientX = event.clientX;
+  const clientY = event.clientY;
+  if (
+    clientX < imageRect.left ||
+    clientX > imageRect.right ||
+    clientY < imageRect.top ||
+    clientY > imageRect.bottom
+  ) {
+    return;
+  }
+
+  const x = (clientX - imageRect.left) / imageRect.width;
+  const y = (clientY - imageRect.top) / imageRect.height;
+  markers.push({
+    id: crypto.randomUUID(),
+    type: markerMode,
+    x,
+    y
+  });
+  editPlanInput.value = "";
+  renderMarkers();
+  updateActionButtons();
+}
+
+function clearMarkers() {
+  markers = [];
+  editPlanInput.value = "";
+  planQuestionInput.value = "";
+  renderMarkers();
+  updateActionButtons();
+}
+
+function renderMarkers() {
+  markerList.replaceChildren();
+  markerList.hidden = markers.length === 0;
+  markers.forEach((marker, index) => {
+    const item = document.createElement("span");
+    item.className = `marker-chip ${marker.type}`;
+    item.textContent = `${markerLabel(marker.type)} ${index + 1}`;
+    markerList.append(item);
+  });
+  drawMarkers();
+}
+
+function drawMarkers() {
+  const frameRect = resultFrame.getBoundingClientRect();
+  markerCanvas.width = Math.max(1, Math.round(frameRect.width));
+  markerCanvas.height = Math.max(1, Math.round(frameRect.height));
+  const context = markerCanvas.getContext("2d");
+  context.clearRect(0, 0, markerCanvas.width, markerCanvas.height);
+  if (!markers.length || resultFrame.classList.contains("empty")) return;
+
+  const imageRect = displayedImageRect();
+  if (!imageRect) return;
+  const frameLeft = frameRect.left;
+  const frameTop = frameRect.top;
+
+  markers.forEach((marker, index) => {
+    const x = imageRect.left - frameLeft + marker.x * imageRect.width;
+    const y = imageRect.top - frameTop + marker.y * imageRect.height;
+    drawMarkerDot(context, x, y, marker.type, index + 1);
+  });
+}
+
+function drawMarkerDot(context, x, y, type, index) {
+  const fill = type === "keep" ? "#2563eb" : "#e11d48";
+  context.save();
+  context.beginPath();
+  context.arc(x, y, 15, 0, Math.PI * 2);
+  context.fillStyle = fill;
+  context.globalAlpha = 0.88;
+  context.fill();
+  context.globalAlpha = 1;
+  context.lineWidth = 3;
+  context.strokeStyle = "#ffffff";
+  context.stroke();
+  context.fillStyle = "#ffffff";
+  context.font = "700 13px system-ui, sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(String(index), x, y);
+  context.restore();
+}
+
+function displayedImageRect() {
+  if (!resultImage.naturalWidth || !resultImage.naturalHeight || resultFrame.classList.contains("empty")) return null;
+  const frameRect = resultFrame.getBoundingClientRect();
+  const imageRatio = resultImage.naturalWidth / resultImage.naturalHeight;
+  const frameRatio = frameRect.width / frameRect.height;
+  let width = frameRect.width;
+  let height = frameRect.height;
+  let left = frameRect.left;
+  let top = frameRect.top;
+
+  if (frameRatio > imageRatio) {
+    width = height * imageRatio;
+    left += (frameRect.width - width) / 2;
+  } else {
+    height = width / imageRatio;
+    top += (frameRect.height - height) / 2;
+  }
+
+  return {
+    left,
+    top,
+    right: left + width,
+    bottom: top + height,
+    width,
+    height
+  };
+}
+
+function markerLabel(type) {
+  return type === "keep" ? "Ponechat" : "Odstranit";
+}
+
+async function createAnnotatedImage(baseDataUrl = workingDataUrl) {
+  const image = await loadImage(baseDataUrl);
+  const canvas = document.createElement("canvas");
+  canvas.width = image.naturalWidth;
+  canvas.height = image.naturalHeight;
+  const context = canvas.getContext("2d");
+  context.drawImage(image, 0, 0);
+
+  const radius = Math.max(28, Math.round(Math.max(canvas.width, canvas.height) * 0.018));
+  markers.forEach((marker, index) => {
+    const x = marker.x * canvas.width;
+    const y = marker.y * canvas.height;
+    drawAnnotatedMarker(context, x, y, radius, marker.type, index + 1);
+  });
+
+  return canvas.toDataURL("image/jpeg", 0.92);
+}
+
+function drawAnnotatedMarker(context, x, y, radius, type, index) {
+  const fill = type === "keep" ? "#2563eb" : "#e11d48";
+  context.save();
+  context.beginPath();
+  context.arc(x, y, radius, 0, Math.PI * 2);
+  context.fillStyle = fill;
+  context.globalAlpha = 0.9;
+  context.fill();
+  context.globalAlpha = 1;
+  context.lineWidth = Math.max(4, radius * 0.16);
+  context.strokeStyle = "#ffffff";
+  context.stroke();
+  context.fillStyle = "#ffffff";
+  context.font = `800 ${Math.round(radius * 0.9)}px system-ui, sans-serif`;
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(String(index), x, y);
+  context.restore();
+}
+
+async function createEditPlan() {
+  await requestEditPlan("");
+}
+
+async function reviseEditPlan() {
+  const question = planQuestionInput.value.trim();
+  if (!question) return;
+  await requestEditPlan(question);
+}
+
+async function requestEditPlan(message) {
+  if (!workingDataUrl || !workingSize || markers.length === 0 || isBusy) return;
+  setBusy(true);
+  statusText.textContent = message ? "Upravuji plan podle dotazu..." : "Model premysli nad oznacenymi objekty...";
+
+  try {
+    const planImage = await prepareScaledEdit(workingDataUrl, workingSize, true);
+    const annotatedImageData = await createAnnotatedImage(planImage.imageData);
+    const response = await fetch("/api/plan-edit", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        imageData: planImage.imageData,
+        annotatedImageData,
+        mimeType: planImage.mimeType,
+        markers: markers.map((marker, index) => ({
+          index: index + 1,
+          type: marker.type,
+          x: marker.x,
+          y: marker.y
+        })),
+        currentPlan: editPlanInput.value,
+        message
+      })
+    });
+    const payload = await readJsonPayload(response);
+    if (!response.ok) {
+      throw new Error(payload.error || "Plan se nepodarilo vytvorit.");
+    }
+
+    editPlanInput.value = payload.plan || "";
+    if (payload.summary) appendChatMessage("assistant", payload.summary);
+    planQuestionInput.value = "";
+    statusText.textContent = "Plan je pripraveny. Muzete ho upravit nebo spustit.";
+  } catch (error) {
+    showEditError(error.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function runEditPlan() {
+  const plan = editPlanInput.value.trim();
+  if (!plan) return;
+  await submitInstruction(plan, "remove");
 }
 
 async function analyzeObjects() {
@@ -783,7 +1066,11 @@ function undoLastEdit() {
   workingMimeType = previous.mimeType;
   workingFileName = previous.fileName;
   workingSize = previous.size;
+  markers = [];
+  editPlanInput.value = "";
+  planQuestionInput.value = "";
   resultImage.src = workingDataUrl;
+  resultImage.addEventListener("load", drawMarkers, { once: true });
   resultFrame.classList.remove("empty", "error");
   resultPlaceholder.hidden = true;
   downloadButton.href = workingDataUrl;
@@ -793,6 +1080,7 @@ function undoLastEdit() {
   shareButton.disabled = !canShareResult(resultFile);
   appendChatMessage("assistant", "Vracim posledni krok. Muzete zadat upravu znovu.");
   statusText.textContent = "Vraceno o jeden krok zpet.";
+  renderMarkers();
   updateActionButtons();
 }
 

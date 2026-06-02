@@ -253,6 +253,16 @@ button:disabled,
   background: #fbfdfc;
 }
 
+.marker-planner {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #fffdf7;
+}
+
 .object-picker-header {
   display: flex;
   align-items: center;
@@ -300,6 +310,64 @@ button:disabled,
 .object-query button {
   min-height: 38px;
   padding: 0 13px;
+}
+
+.marker-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.marker-tools button,
+.marker-planner > button {
+  min-height: 38px;
+  padding: 0 13px;
+}
+
+.mark-mode {
+  border-color: var(--edit-mark-soft);
+  background: #ffffff;
+  color: var(--edit-mark);
+  font-weight: 800;
+}
+
+.mark-mode.keep {
+  border-color: #dbeafe;
+  color: #2563eb;
+}
+
+.mark-mode.active {
+  background: var(--edit-mark);
+  color: #ffffff;
+}
+
+.mark-mode.keep.active {
+  background: #2563eb;
+}
+
+.marker-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.marker-chip {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 9px;
+  background: var(--edit-mark-soft);
+  color: var(--edit-mark);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.marker-chip.keep {
+  background: #dbeafe;
+  color: #2563eb;
 }
 
 .object-target {
@@ -459,6 +527,19 @@ figcaption {
   display: block;
 }
 
+.marker-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+}
+
+.image-frame.empty .marker-canvas {
+  display: none;
+}
+
 .image-frame:not(.empty) img {
   background: #eef3f0;
 }
@@ -479,7 +560,7 @@ figcaption {
 
 .spinner {
   position: absolute;
-  z-index: 2;
+  z-index: 4;
   width: 48px;
   height: 48px;
   border: 4px solid rgba(13, 124, 112, 0.18);

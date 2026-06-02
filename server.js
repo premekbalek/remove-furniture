@@ -55,6 +55,11 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "POST" && req.url === "/api/plan-edit") {
+      await handlePlanEdit(req, res);
+      return;
+    }
+
     if (req.method === "GET" && req.url.startsWith("/api/remove-furniture/")) {
       handleEditJobStatus(req, res);
       return;
@@ -205,6 +210,89 @@ async function handleFindObject(req, res) {
   }
 
   sendJson(res, 200, parsed);
+}
+
+async function handlePlanEdit(req, res) {
+  if (!apiKey) {
+    sendJson(res, 500, {
+      error: "Chybi OPENAI_API_KEY. Doplnte ho do souboru .env nebo promenne prostredi."
+    });
+    return;
+  }
+
+  const body = await readRequestBody(req, maxJsonBytes);
+  const payload = JSON.parse(body);
+  const { imageData, annotatedImageData, mimeType, markers, currentPlan, message } = payload;
+  if (!imageData || !annotatedImageData || !mimeType || !formatFromMime(mimeType) || !Array.isArray(markers) || markers.length === 0) {
+    sendJson(res, 400, { error: "Chybi fotka nebo znacky pro plan upravy." });
+    return;
+  }
+
+  const markerLines = markers.slice(0, 30).map((marker) => {
+    const type = marker.type === "keep" ? "KEEP / ponechat" : "REMOVE / odstranit";
+    return `${marker.index}: ${type}, normalized position x=${Number(marker.x).toFixed(3)}, y=${Number(marker.y).toFixed(3)}`;
+  });
+
+  const data = await fetchOpenAiJsonWithRetry(openAiResponsesUrl, {
+    model: visionModel,
+    input: [{
+      role: "user",
+      content: [
+        {
+          type: "input_text",
+          text: [
+            "You are planning a real-estate image edit before the image editing model runs.",
+            "The first image is the original/current room photo. The second image is the same photo with colored numbered markers overlaid.",
+            "Red/pink numbered markers mean: remove the complete object at or nearest that marker. A marker is only a pointer to the object, not a pixel mask.",
+            "Blue numbered markers mean: keep the complete object at or nearest that marker unchanged.",
+            "Infer the complete object using visual context, object boundaries, legs, shadows and relationship to nearby items.",
+            "Write a concise Czech edit plan that the user can review and edit.",
+            "The plan must explicitly list what to remove and what to keep.",
+            "Always lock unchanged architecture by default: windows, doors, radiators, walls, ceiling, floor, fixed lights, sockets, switches, trim, perspective and camera angle.",
+            "Never move, resize or redesign windows. Never invent a new chandelier or lamp. Keep existing fixed lighting unless explicitly marked red.",
+            "When a wardrobe/cabinet/shelf/bed/furniture is removed, reconstruct the newly visible wall or floor as the same plain wall/floor continuation, not as a ghost, print, texture or replacement furniture.",
+            "Do not add new furniture, decor, text, logos, people or staging.",
+            "If the user asks a follow-up, revise the current plan accordingly.",
+            "Return only JSON matching the schema.",
+            `Markers: ${markerLines.join(" | ")}`,
+            currentPlan ? `Current plan to revise: ${sanitizeInstruction(currentPlan)}` : "No current plan yet.",
+            message ? `User follow-up: ${sanitizeInstruction(message)}` : "User follow-up: create the first plan."
+          ].join(" ")
+        },
+        {
+          type: "input_image",
+          image_url: imageData,
+          detail: "high"
+        },
+        {
+          type: "input_image",
+          image_url: annotatedImageData,
+          detail: "high"
+        }
+      ]
+    }],
+    text: {
+      format: {
+        type: "json_schema",
+        name: "room_edit_plan",
+        strict: true,
+        schema: editPlanSchema()
+      }
+    }
+  });
+
+  const text = extractResponseText(data);
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw publicError("Plan upravy nebyl vracen jako platne JSON.", 502);
+  }
+
+  sendJson(res, 200, {
+    plan: parsed.plan,
+    summary: parsed.summary
+  });
 }
 
 async function handleRemoveFurniture(req, res) {
@@ -576,6 +664,18 @@ function singleObjectTargetSchema() {
   };
 }
 
+function editPlanSchema() {
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      summary: { type: "string" },
+      plan: { type: "string" }
+    },
+    required: ["summary", "plan"]
+  };
+}
+
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -609,7 +709,8 @@ function buildEditPrompt(payload) {
     "Photorealistic real estate photo edit.",
     "Edit only what the current user instruction asks for.",
     "Preserve the camera angle, room layout, architecture, windows, doors, radiators, walls, floor, fixed fixtures, colors and realistic lighting.",
-    "Do not add new furniture, decor, people, text, logos or watermarks."
+    "Do not move, resize, redesign or replace windows, doors, radiators, fixed lights, ceiling lights, sockets, switches, floor, ceiling, walls, trim or perspective.",
+    "Do not invent or add a chandelier, lamp, furniture, decor, people, text, logos or watermarks."
   ];
 
   if (operation === "retouch") {
@@ -700,6 +801,7 @@ function buildEditPrompt(payload) {
       ? "The selected target appears to be a rug or carpet. Remove only the rug/carpet floor covering. Keep all tables, chairs, sofas, cabinets, shelves, plants, tableware, dishes, bowls, decorative items, and cabinet contents exactly unchanged, even if they touch, overlap, stand on, or are near the rug/carpet."
       : "",
     "Fill the revealed area with the natural continuation of the existing floor, wall, trim, light and shadows.",
+    "If a cabinet, wardrobe, shelf, bed or other furniture is removed from in front of a wall, reconstruct only the plain continuous wall and floor that would naturally be behind it. Do not leave a ghost silhouette, cabinet-shaped wall texture, fake panel, artwork, print or replacement furniture.",
     "Preserve all unselected objects exactly, even if they are movable or removable.",
     `Current user instruction: ${instruction || "Remove the requested movable object."}`,
     "Return the same room with only the requested selected target removed naturally."
@@ -711,7 +813,7 @@ function normalizeEditOperation(value) {
 }
 
 function sanitizeInstruction(value) {
-  return String(value || "").replace(/\s+/g, " ").trim().slice(0, 1000);
+  return String(value || "").replace(/\s+/g, " ").trim().slice(0, 4000);
 }
 
 function supportedImageSize(width, height, draft = false) {

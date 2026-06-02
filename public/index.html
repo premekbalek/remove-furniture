@@ -55,8 +55,33 @@
             </label>
             <button id="removeSelectedObjectsButton" class="primary" type="button" disabled>Odstranit vybrane</button>
           </section>
+          <section class="marker-planner" aria-label="Plan podle znacek ve fotce">
+            <div class="object-picker-header">
+              <div>
+                <strong>Plan podle znacek ve fotce</strong>
+                <p>Kliknete do pracovni fotky: cervena znacka urci objekt k odstraneni, modra znacka objekt k ponechani.</p>
+              </div>
+              <div class="marker-tools" role="group" aria-label="Nastroje znaceni">
+                <button id="removeMarkModeButton" class="mark-mode active" type="button" disabled>Odstranit</button>
+                <button id="keepMarkModeButton" class="mark-mode keep" type="button" disabled>Ponechat</button>
+                <button id="clearMarksButton" type="button" disabled>Smazat znacky</button>
+              </div>
+            </div>
+            <div id="markerList" class="marker-list" hidden></div>
+            <button id="createPlanButton" class="primary" type="button" disabled>Vytvorit plan upravy</button>
+            <label class="prompt-editor" for="editPlanInput">
+              <span>Plan upravy pro model</span>
+              <textarea id="editPlanInput" rows="8" placeholder="Tady se objevi plan. Muzete ho upravit, nebo se doptat modelem nize." disabled></textarea>
+            </label>
+            <form id="planQuestionForm" class="object-query">
+              <label class="visually-hidden" for="planQuestionInput">Dotaz nebo uprava planu</label>
+              <input id="planQuestionInput" type="text" placeholder="Napr. Ponech lustr a okna, odstran jen skrin vpravo." disabled>
+              <button id="revisePlanButton" type="submit" disabled>Upravit plan</button>
+            </form>
+            <button id="runPlanButton" class="primary" type="button" disabled>Spustit podle planu</button>
+          </section>
           <div id="chatThread" class="chat-thread" aria-live="polite">
-            <p class="chat-message assistant">Nahrajte fotku, kliknete na Najit predmety a vyberte objekty nebo skupiny veci k odstraneni.</p>
+            <p class="chat-message assistant">Nahrajte fotku. Muzete vybrat rozpoznane predmety, nebo kliknout znacky do pracovni fotky a nechat model vytvorit plan upravy.</p>
           </div>
         </section>
 
@@ -95,6 +120,7 @@
             </div>
             <div class="image-frame empty" id="resultFrame">
               <img id="resultImage" alt="Pracovni fotka mistnosti">
+              <canvas id="markerCanvas" class="marker-canvas" aria-label="Znacky ve fotce"></canvas>
               <div id="spinner" class="spinner" hidden></div>
               <span id="resultPlaceholder">Vysledek se zobrazi tady</span>
             </div>
