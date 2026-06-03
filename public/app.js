@@ -323,6 +323,7 @@ async function showEditResult(payload, editContext = null) {
   spinner.hidden = true;
   pushUndoState();
   const finalPayload = payload;
+  const operation = editContext?.operation || finalPayload.operation;
   workingDataUrl = finalPayload.imageData;
   workingMimeType = finalPayload.mimeType;
   workingFileName = finalPayload.fileName;
@@ -334,19 +335,20 @@ async function showEditResult(payload, editContext = null) {
   resultImage.addEventListener("load", drawMarkers, { once: true });
   resultFrame.classList.remove("empty", "error");
   resultPlaceholder.hidden = true;
-  resultFile = editContext?.operation === "web-quality"
+  resultFile = operation === "web-quality"
     ? await createWebJpegDownloadFile(finalPayload.imageData, finalPayload.fileName)
     : dataUrlToFile(finalPayload.imageData, finalPayload.fileName || "mistnost-bez-nabytku.jpg", finalPayload.mimeType);
   downloadButton.download = resultFile.name;
   setDownloadFile(resultFile);
   renderMarkers();
-  appendChatMessage("assistant", completionMessage(editContext?.operation));
+  appendChatMessage("assistant", completionMessage(operation));
 
   const fileSizeNote = resultFile ? ` Soubor: ${formatBytes(resultFile.size)}.` : "";
+  const downloadNote = operation === "web-quality" ? " Stazeni: JPEG pro web." : "";
   const sizeNote = finalPayload.usedOriginalSize
     ? "Rozliseni zustalo stejne."
     : `Webovy vystup: ${finalPayload.width} x ${finalPayload.height}px.`;
-  statusText.textContent = `Hotovo. ${sizeNote}${fileSizeNote}`;
+  statusText.textContent = `Hotovo. ${sizeNote}${fileSizeNote}${downloadNote}`;
 }
 
 function showEditError(message, operation = null) {

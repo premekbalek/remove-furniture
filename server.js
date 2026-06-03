@@ -449,6 +449,7 @@ async function processEditJob(jobId, edit) {
       imageData: `data:image/${edit.outputFormat};base64,${b64}`,
       mimeType: `image/${edit.outputFormat}`,
       fileName: outputName(edit.safeName, edit.extension, edit.operation),
+      operation: edit.operation,
       width: edit.size.width,
       height: edit.size.height,
       byteSize: Buffer.byteLength(b64, "base64"),
