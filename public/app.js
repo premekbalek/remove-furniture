@@ -334,8 +334,10 @@ async function showEditResult(payload, editContext = null) {
   resultImage.addEventListener("load", drawMarkers, { once: true });
   resultFrame.classList.remove("empty", "error");
   resultPlaceholder.hidden = true;
-  downloadButton.download = finalPayload.fileName || "mistnost-bez-nabytku.jpg";
-  resultFile = dataUrlToFile(finalPayload.imageData, downloadButton.download, finalPayload.mimeType);
+  resultFile = editContext?.operation === "web-quality"
+    ? await createWebJpegDownloadFile(finalPayload.imageData, finalPayload.fileName)
+    : dataUrlToFile(finalPayload.imageData, finalPayload.fileName || "mistnost-bez-nabytku.jpg", finalPayload.mimeType);
+  downloadButton.download = resultFile.name;
   setDownloadFile(resultFile);
   renderMarkers();
   appendChatMessage("assistant", completionMessage(editContext?.operation));
@@ -442,7 +444,7 @@ async function normalizeSelectedImage(file) {
   };
 }
 
-async function convertImageDataUrlToJpeg(dataUrl) {
+async function convertImageDataUrlToJpeg(dataUrl, quality = 0.96) {
   const image = await loadImage(dataUrl);
   const canvas = document.createElement("canvas");
   canvas.width = image.naturalWidth;
@@ -453,7 +455,7 @@ async function convertImageDataUrlToJpeg(dataUrl) {
   context.fillRect(0, 0, canvas.width, canvas.height);
   context.drawImage(image, 0, 0);
 
-  return canvas.toDataURL("image/jpeg", 0.96);
+  return canvas.toDataURL("image/jpeg", quality);
 }
 
 async function convertImageDataUrlToPng(dataUrl) {
@@ -463,6 +465,12 @@ async function convertImageDataUrlToPng(dataUrl) {
   canvas.height = image.naturalHeight;
   canvas.getContext("2d").drawImage(image, 0, 0);
   return canvas.toDataURL("image/png");
+}
+
+async function createWebJpegDownloadFile(dataUrl, fileName) {
+  const jpegDataUrl = await convertImageDataUrlToJpeg(dataUrl, 0.94);
+  const jpegName = replaceExtension(fileName || "mistnost-web-kvalita", "jpg");
+  return dataUrlToFile(jpegDataUrl, jpegName, "image/jpeg");
 }
 
 function getImageSize(src) {
