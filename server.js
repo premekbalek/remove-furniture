@@ -22,7 +22,6 @@ const draftOutputEdge = readPositiveInteger(process.env.OPENAI_DRAFT_OUTPUT_EDGE
 const draftOutputPixels = readPositiveInteger(process.env.OPENAI_DRAFT_OUTPUT_PIXELS, 1048576);
 const webOutputEdge = readPositiveInteger(process.env.OPENAI_WEB_OUTPUT_EDGE, 2048);
 const webOutputPixels = readPositiveInteger(process.env.OPENAI_WEB_OUTPUT_PIXELS, 4194304);
-const webOutputCompression = readCompressionValue(process.env.OPENAI_WEB_OUTPUT_COMPRESSION, 5);
 const maxJsonBytes = 75 * 1024 * 1024;
 const openAiEditUrl = "https://api.openai.com/v1/images/edits";
 const openAiResponsesUrl = "https://api.openai.com/v1/responses";
@@ -321,7 +320,8 @@ async function handleRemoveFurniture(req, res) {
     return;
   }
 
-  const outputFormat = "jpeg";
+  const operation = normalizeEditOperation(payload.operation);
+  const outputFormat = operation === "web-quality" ? "png" : "jpeg";
   const base64 = String(imageData).replace(/^data:image\/[a-z0-9.+-]+;base64,/i, "");
   const imageBuffer = Buffer.from(base64, "base64");
   let maskBuffer = null;
@@ -332,10 +332,9 @@ async function handleRemoveFurniture(req, res) {
     }
     maskBuffer = Buffer.from(String(maskData).replace(/^data:image\/png;base64,/i, ""), "base64");
   }
-  const operation = normalizeEditOperation(payload.operation);
   const isDraft = payload.draft === true;
   const size = supportedImageSize(Number(width), Number(height), isDraft, operation);
-  const extension = "jpg";
+  const extension = outputFormat === "jpeg" ? "jpg" : outputFormat;
   const safeName = sanitizeFileName(fileName || `mistnost.${inputFormat === "jpeg" ? "jpg" : inputFormat}`);
   const prompt = buildEditPrompt({ ...payload, operation });
 
@@ -353,7 +352,7 @@ async function handleRemoveFurniture(req, res) {
   form.append("output_format", outputFormat);
 
   if (outputFormat === "jpeg" || outputFormat === "webp") {
-    form.append("output_compression", isDraft ? "60" : operation === "web-quality" ? String(webOutputCompression) : "40");
+    form.append("output_compression", isDraft ? "60" : "40");
   }
 
   pruneEditJobs();
@@ -745,11 +744,12 @@ function buildEditPrompt(payload) {
       ...common,
       "Task type: final high-quality web output for a real-estate listing photo, not furniture removal and not virtual staging.",
       "Keep the exact same room, composition, camera angle, layout and all objects. Do not add, remove, move, replace, redesign or restage anything.",
-      "Perform realistic super-resolution/upscaling and detail reconstruction for a web listing image.",
-      "Improve only image quality and web presentation: remove blotchy compression artifacts, banding, smearing, blockiness and patchy wall or floor texture; reduce noise, refine fine detail, add natural sharpening, balance tones, improve local contrast, neutralize color cast and keep colors realistic.",
-      "The result should look crisp, clean and professional on a real-estate website, while remaining honest and natural, with no artificial plastic look.",
+      "Do not posterize, segment, flatten, cartoonize, repaint, simplify or convert the room into large flat color regions.",
+      "Perform subtle realistic image enhancement and gentle super-resolution for a real-estate listing image.",
+      "Improve only image quality and web presentation: reduce noise and compression artifacts, restore natural wall and floor gradients, refine fine photographic texture, add natural sharpening, balance tones, improve local contrast, neutralize color cast and keep colors realistic.",
+      "The result should look like the same photograph exported in higher quality, crisp and clean on a real-estate website, with no artificial plastic look.",
       `Current user instruction: ${instruction || "Create a high-quality web-ready real-estate photo output."}`,
-      "Return the same photo content with higher actual and perceived image quality."
+      "Return the same photo content as a natural high-quality photographic PNG."
     ].join(" ");
   }
 
@@ -905,11 +905,6 @@ function ceilToMultiple(value, multiple) {
 function readPositiveInteger(value, fallback) {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-function readCompressionValue(value, fallback) {
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) ? clamp(parsed, 0, 100) : fallback;
 }
 
 function readImageQuality(value) {
