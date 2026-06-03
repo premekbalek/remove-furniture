@@ -548,6 +548,10 @@ figcaption {
   display: none;
 }
 
+.image-frame:not(.empty) > span {
+  display: none;
+}
+
 .image-frame span {
   color: var(--muted);
   padding: 18px;

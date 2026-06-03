@@ -20,6 +20,9 @@ const maxOutputEdge = readPositiveInteger(process.env.OPENAI_MAX_OUTPUT_EDGE, 15
 const maxOutputPixels = readPositiveInteger(process.env.OPENAI_MAX_OUTPUT_PIXELS, 2359296);
 const draftOutputEdge = readPositiveInteger(process.env.OPENAI_DRAFT_OUTPUT_EDGE, 1024);
 const draftOutputPixels = readPositiveInteger(process.env.OPENAI_DRAFT_OUTPUT_PIXELS, 1048576);
+const webOutputEdge = readPositiveInteger(process.env.OPENAI_WEB_OUTPUT_EDGE, 2048);
+const webOutputPixels = readPositiveInteger(process.env.OPENAI_WEB_OUTPUT_PIXELS, 4194304);
+const webOutputCompression = readCompressionValue(process.env.OPENAI_WEB_OUTPUT_COMPRESSION, 5);
 const maxJsonBytes = 75 * 1024 * 1024;
 const openAiEditUrl = "https://api.openai.com/v1/images/edits";
 const openAiResponsesUrl = "https://api.openai.com/v1/responses";
@@ -329,11 +332,11 @@ async function handleRemoveFurniture(req, res) {
     }
     maskBuffer = Buffer.from(String(maskData).replace(/^data:image\/png;base64,/i, ""), "base64");
   }
+  const operation = normalizeEditOperation(payload.operation);
   const isDraft = payload.draft === true;
-  const size = supportedImageSize(Number(width), Number(height), isDraft);
+  const size = supportedImageSize(Number(width), Number(height), isDraft, operation);
   const extension = "jpg";
   const safeName = sanitizeFileName(fileName || `mistnost.${inputFormat === "jpeg" ? "jpg" : inputFormat}`);
-  const operation = normalizeEditOperation(payload.operation);
   const prompt = buildEditPrompt({ ...payload, operation });
 
   const form = new FormData();
@@ -350,7 +353,7 @@ async function handleRemoveFurniture(req, res) {
   form.append("output_format", outputFormat);
 
   if (outputFormat === "jpeg" || outputFormat === "webp") {
-    form.append("output_compression", isDraft ? "60" : operation === "web-quality" ? "30" : "40");
+    form.append("output_compression", isDraft ? "60" : operation === "web-quality" ? String(webOutputCompression) : "40");
   }
 
   pruneEditJobs();
@@ -449,6 +452,7 @@ async function processEditJob(jobId, edit) {
       fileName: outputName(edit.safeName, edit.extension, edit.operation),
       width: edit.size.width,
       height: edit.size.height,
+      byteSize: Buffer.byteLength(b64, "base64"),
       patch: edit.patch,
       usedOriginalSize: edit.size.usedOriginalSize
     };
@@ -741,10 +745,11 @@ function buildEditPrompt(payload) {
       ...common,
       "Task type: final high-quality web output for a real-estate listing photo, not furniture removal and not virtual staging.",
       "Keep the exact same room, composition, camera angle, layout and all objects. Do not add, remove, move, replace, redesign or restage anything.",
-      "Improve only image quality and web presentation: clean compression artifacts, reduce noise, refine fine detail, add natural sharpening, balance tones, improve local contrast, neutralize color cast and keep colors realistic.",
-      "The result should look crisp, clean and professional on a real-estate website, while remaining honest and natural.",
+      "Perform realistic super-resolution/upscaling and detail reconstruction for a web listing image.",
+      "Improve only image quality and web presentation: remove blotchy compression artifacts, banding, smearing, blockiness and patchy wall or floor texture; reduce noise, refine fine detail, add natural sharpening, balance tones, improve local contrast, neutralize color cast and keep colors realistic.",
+      "The result should look crisp, clean and professional on a real-estate website, while remaining honest and natural, with no artificial plastic look.",
       `Current user instruction: ${instruction || "Create a high-quality web-ready real-estate photo output."}`,
-      "Return the same photo content with higher perceived image quality."
+      "Return the same photo content with higher actual and perceived image quality."
     ].join(" ");
   }
 
@@ -816,22 +821,32 @@ function sanitizeInstruction(value) {
   return String(value || "").replace(/\s+/g, " ").trim().slice(0, 4000);
 }
 
-function supportedImageSize(width, height, draft = false) {
-  const original = normalizeToConstraints(width, height, draft);
+function supportedImageSize(width, height, draft = false, operation = "remove") {
+  const original = normalizeToConstraints(width, height, draft, operation);
   return {
     ...original,
     usedOriginalSize: original.width === width && original.height === height
   };
 }
 
-function normalizeToConstraints(width, height, draft = false) {
+function normalizeToConstraints(width, height, draft = false, operation = "remove") {
   const ratio = width / height;
   let nextWidth = width;
   let nextHeight = height;
   const apiMaxEdge = 3840;
   const apiMaxPixels = 8294400;
-  const targetMaxEdge = Math.min(draft ? draftOutputEdge : maxOutputEdge, apiMaxEdge);
-  const targetMaxPixels = Math.min(draft ? draftOutputPixels : maxOutputPixels, apiMaxPixels);
+  const isWebQuality = operation === "web-quality" && !draft;
+  const targetMaxEdge = Math.min(draft ? draftOutputEdge : isWebQuality ? webOutputEdge : maxOutputEdge, apiMaxEdge);
+  const targetMaxPixels = Math.min(draft ? draftOutputPixels : isWebQuality ? webOutputPixels : maxOutputPixels, apiMaxPixels);
+
+  if (isWebQuality) {
+    const maxEdge = Math.max(nextWidth, nextHeight);
+    if (maxEdge < targetMaxEdge) {
+      const scale = targetMaxEdge / maxEdge;
+      nextWidth *= scale;
+      nextHeight *= scale;
+    }
+  }
 
   const maxEdge = Math.max(nextWidth, nextHeight);
   if (maxEdge > targetMaxEdge) {
@@ -890,6 +905,11 @@ function ceilToMultiple(value, multiple) {
 function readPositiveInteger(value, fallback) {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function readCompressionValue(value, fallback) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? clamp(parsed, 0, 100) : fallback;
 }
 
 function readImageQuality(value) {

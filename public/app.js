@@ -41,6 +41,8 @@ const maxEditEdge = 1536;
 const maxEditPixels = 2359296;
 const draftEditEdge = 1024;
 const draftEditPixels = 1048576;
+const highQualityEditEdge = 2048;
+const highQualityEditPixels = 4194304;
 
 let selectedFile = null;
 let originalDataUrl = null;
@@ -50,6 +52,7 @@ let workingMimeType = null;
 let workingFileName = null;
 let workingSize = null;
 let resultFile = null;
+let resultObjectUrl = null;
 let isBusy = false;
 let undoStack = [];
 let activeJobId = null;
@@ -124,8 +127,11 @@ async function handleFileSelection(input) {
   originalFrame.classList.remove("empty");
   resultImage.src = workingDataUrl;
   resultImage.addEventListener("load", drawMarkers, { once: true });
-  resultFrame.classList.remove("empty");
+  resultFrame.classList.remove("empty", "error");
   resultPlaceholder.hidden = true;
+  downloadButton.download = workingFileName || "mistnost.jpg";
+  resultFile = dataUrlToFile(workingDataUrl, downloadButton.download, workingMimeType);
+  setDownloadFile(resultFile);
   updateActionButtons();
   const conversionNote = normalized.converted ? " | prevedeno na JPEG pro zpracovani" : " | pripraveno pro zpracovani";
   statusText.textContent = `${selectedFile.name} | ${originalSize.width} x ${originalSize.height}px${conversionNote}`;
@@ -161,8 +167,9 @@ enhanceButton.addEventListener("click", () => {
 
 webQualityButton.addEventListener("click", () => {
   void submitInstruction(
-    "Finalni webova kvalita: vylepsi aktualni hotovou fotku pro zobrazeni na realitnim webu. Zachovej obsah, kompozici, predmety, dispozici a realisticky stav presne stejne. Uprav pouze cistotu obrazu, jemne doostreni, odsumeni, mikro-kontrast, tonovou vyvazenost, prirozene barvy a citelnost detailu. Vysledek ma byt kvalitni, cisty a profesionalni pro web, bez umeleho vzhledu.",
-    "web-quality"
+    "Finalni webova kvalita a doplneni pixelu: vytvor kvalitni webovy vystup z aktualni fotky jako realisticky super-resolution/upscale. Zachovej obsah, kompozici, predmety, dispozici a realisticky stav presne stejne. Nemaz, nepridavej ani nepresouvej zadne objekty. Dopln jemne obrazove detaily a texturu tak, aby zmizely kompresni fleky, mapy, bloky a rozpad detailu. Uprav pouze cistotu obrazu, jemne doostreni, odsumeni, mikro-kontrast, tonovou vyvazenost, prirozene barvy a citelnost detailu. Vysledek ma byt kvalitni, cisty a profesionalni pro web, bez umeleho vzhledu.",
+    "web-quality",
+    { highResolution: true }
   );
 });
 
@@ -177,7 +184,8 @@ async function submitInstruction(value, operation, options = {}) {
   void requestEdit({
     instruction,
     operation,
-    draft: Boolean(options.draft)
+    draft: Boolean(options.draft),
+    highResolution: Boolean(options.highResolution)
   });
 }
 
@@ -195,7 +203,7 @@ async function requestEdit(edit) {
   showProcessingStatus(processingStartMessage(editContext.operation));
 
   try {
-    const requestImage = await prepareScaledEdit(editContext.baseDataUrl, editContext.baseSize, edit.draft);
+    const requestImage = await prepareScaledEdit(editContext.baseDataUrl, editContext.baseSize, edit.draft, edit.highResolution);
 
     const response = await fetch("/api/remove-furniture", {
       method: "POST",
@@ -210,7 +218,8 @@ async function requestEdit(edit) {
         height: requestImage.height,
         operation: editContext.operation,
         instruction: editContext.instruction,
-        draft: Boolean(edit.draft)
+        draft: Boolean(edit.draft),
+        highResolution: Boolean(edit.highResolution)
       })
     });
 
@@ -231,7 +240,7 @@ async function requestEdit(edit) {
     await pollEditJob(payload.jobId, editContext);
   } catch (error) {
     if (!isCanceling) {
-      showEditError(error.message);
+      showEditError(error.message, editContext.operation);
     }
   } finally {
     activeJobId = null;
@@ -264,6 +273,7 @@ function setBusy(busy) {
   revisePlanButton.disabled = busy || !canRequestEdit() || markers.length === 0 || !planQuestionInput.value.trim();
   runPlanButton.disabled = busy || !canRequestEdit() || !editPlanInput.value.trim();
   shareButton.disabled = busy || !canShareResult(resultFile);
+  downloadButton.classList.toggle("disabled", busy || !resultFile);
   fileInput.disabled = busy;
   cameraInput.disabled = busy;
 }
@@ -274,6 +284,7 @@ function resetResult() {
   workingFileName = null;
   workingSize = null;
   resultFile = null;
+  clearDownloadFile();
   undoStack = [];
   activeJobId = null;
   isCanceling = false;
@@ -323,21 +334,20 @@ async function showEditResult(payload, editContext = null) {
   resultImage.addEventListener("load", drawMarkers, { once: true });
   resultFrame.classList.remove("empty", "error");
   resultPlaceholder.hidden = true;
-  downloadButton.href = finalPayload.imageData;
   downloadButton.download = finalPayload.fileName || "mistnost-bez-nabytku.jpg";
-  downloadButton.classList.remove("disabled");
   resultFile = dataUrlToFile(finalPayload.imageData, downloadButton.download, finalPayload.mimeType);
-  shareButton.disabled = !canShareResult(resultFile);
+  setDownloadFile(resultFile);
   renderMarkers();
   appendChatMessage("assistant", completionMessage(editContext?.operation));
 
+  const fileSizeNote = resultFile ? ` Soubor: ${formatBytes(resultFile.size)}.` : "";
   const sizeNote = finalPayload.usedOriginalSize
     ? "Rozliseni zustalo stejne."
     : `Webovy vystup: ${finalPayload.width} x ${finalPayload.height}px.`;
-  statusText.textContent = `Hotovo. ${sizeNote}`;
+  statusText.textContent = `Hotovo. ${sizeNote}${fileSizeNote}`;
 }
 
-function showEditError(message) {
+function showEditError(message, operation = null) {
   spinner.hidden = true;
   resultFrame.classList.add("error");
   if (workingDataUrl) {
@@ -347,7 +357,10 @@ function showEditError(message) {
     resultPlaceholder.hidden = false;
     resultPlaceholder.textContent = message;
   }
-  statusText.textContent = `Fotku se nepodarilo upravit: ${message}`;
+  const prefix = operation === "web-quality"
+    ? "Webovou kvalitu se nepodarilo vytvorit. Stahnout lze jen aktualni puvodni/pracovni fotku"
+    : "Fotku se nepodarilo upravit";
+  statusText.textContent = `${prefix}: ${message}`;
 }
 
 async function pollEditJob(jobId, editContext = null) {
@@ -500,6 +513,35 @@ function canShareResult(file) {
   return Boolean(navigator.canShare && file && navigator.canShare({ files: [file] }));
 }
 
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "kB", "MB", "GB"];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${value >= 10 || unitIndex === 0 ? Math.round(value) : value.toFixed(1)} ${units[unitIndex]}`;
+}
+
+function setDownloadFile(file) {
+  clearDownloadFile();
+  resultObjectUrl = URL.createObjectURL(file);
+  downloadButton.href = resultObjectUrl;
+  downloadButton.classList.remove("disabled");
+  shareButton.disabled = !canShareResult(file);
+}
+
+function clearDownloadFile() {
+  if (resultObjectUrl) {
+    URL.revokeObjectURL(resultObjectUrl);
+    resultObjectUrl = null;
+  }
+  downloadButton.removeAttribute("href");
+  downloadButton.classList.add("disabled");
+}
+
 function dataUrlToFile(dataUrl, fileName, mimeType) {
   const [header, base64] = dataUrl.split(",");
   const detectedMime = mimeType || header.match(/^data:([^;]+);/)?.[1] || "image/png";
@@ -539,6 +581,8 @@ function updateActionButtons() {
   runPlanButton.disabled = isBusy || !canRequestEdit() || !editPlanInput.value.trim();
   cancelButton.disabled = !isBusy || !activeJobId;
   undoButton.disabled = isBusy || undoStack.length === 0;
+  shareButton.disabled = isBusy || !canShareResult(resultFile);
+  downloadButton.classList.toggle("disabled", isBusy || !resultFile);
 }
 
 function resetConversation() {
@@ -979,9 +1023,9 @@ function buildSemanticRemovalPrompt(targets) {
   ].filter(Boolean).join("\n");
 }
 
-async function prepareScaledEdit(baseDataUrl, baseSize, draft = false) {
+async function prepareScaledEdit(baseDataUrl, baseSize, draft = false, highResolution = false) {
   const image = await loadImage(baseDataUrl);
-  const size = supportedClientEditSize(baseSize.width, baseSize.height, draft);
+  const size = supportedClientEditSize(baseSize.width, baseSize.height, draft, highResolution);
   const canvas = document.createElement("canvas");
   canvas.width = size.width;
   canvas.height = size.height;
@@ -991,19 +1035,19 @@ async function prepareScaledEdit(baseDataUrl, baseSize, draft = false) {
   context.drawImage(image, 0, 0, size.width, size.height);
 
   return {
-    imageData: canvas.toDataURL("image/jpeg", draft ? 0.82 : 0.9),
+    imageData: canvas.toDataURL("image/jpeg", highResolution ? 0.97 : draft ? 0.82 : 0.9),
     mimeType: "image/jpeg",
     width: size.width,
     height: size.height
   };
 }
 
-function supportedClientEditSize(width, height, draft = false) {
+function supportedClientEditSize(width, height, draft = false, highResolution = false) {
   const ratio = width / height;
   let nextWidth = width;
   let nextHeight = height;
-  const targetMaxEdge = draft ? draftEditEdge : maxEditEdge;
-  const targetMaxPixels = draft ? draftEditPixels : maxEditPixels;
+  const targetMaxEdge = highResolution ? highQualityEditEdge : draft ? draftEditEdge : maxEditEdge;
+  const targetMaxPixels = highResolution ? highQualityEditPixels : draft ? draftEditPixels : maxEditPixels;
 
   const maxEdge = Math.max(nextWidth, nextHeight);
   if (maxEdge > targetMaxEdge) {
@@ -1073,11 +1117,9 @@ function undoLastEdit() {
   resultImage.addEventListener("load", drawMarkers, { once: true });
   resultFrame.classList.remove("empty", "error");
   resultPlaceholder.hidden = true;
-  downloadButton.href = workingDataUrl;
   downloadButton.download = workingFileName || "mistnost-bez-nabytku.jpg";
-  downloadButton.classList.remove("disabled");
   resultFile = dataUrlToFile(workingDataUrl, downloadButton.download, workingMimeType);
-  shareButton.disabled = !canShareResult(resultFile);
+  setDownloadFile(resultFile);
   appendChatMessage("assistant", "Vracim posledni krok. Muzete zadat upravu znovu.");
   statusText.textContent = "Vraceno o jeden krok zpet.";
   renderMarkers();
