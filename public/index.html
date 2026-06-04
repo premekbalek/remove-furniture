@@ -3,16 +3,17 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Vymazani nabytku</title>
+    <title>Uprava fotky mistnosti</title>
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
     <main class="app-shell">
-      <section class="workspace" aria-label="Vymazani nabytku z fotky">
+      <section class="workspace" aria-label="Uprava fotky mistnosti">
         <div class="topbar">
-          <div>
-            <h1>Vymazani nabytku</h1>
-            <p id="statusText">Nahrajte fotku mistnosti z telefonu nebo pocitace.</p>
+          <div class="brand-block">
+            <p class="eyebrow">AI realitni retus</p>
+            <h1>Uprava fotky mistnosti</h1>
+            <p id="statusText">Nahrajte fotku, oznacte problem a popiste pozadovanou upravu.</p>
           </div>
           <div class="upload-actions">
             <label class="file-button">
@@ -26,15 +27,85 @@
           </div>
         </div>
 
+        <section class="edit-chat" aria-label="Zadani upravy">
+          <div class="option-header">
+            <div>
+              <p class="eyebrow">Krok 1</p>
+              <h2>Vyberte zpusob odstraneni</h2>
+            </div>
+            <p class="safety-note">Vyberte vse, uklid drobnosti, nebo konkretni predmety.</p>
+          </div>
+          <section class="object-picker" aria-label="Vyber predmetu podle popisu">
+            <div class="object-picker-header">
+              <div>
+                <strong>Vyber podle rozpoznanych predmetu</strong>
+                <p>Nechte model popsat predmety a skupiny veci. Kdyz neco chybi, doptejte se na konkretni vec.</p>
+              </div>
+              <button id="analyzeObjectsButton" type="button" disabled>Najit predmety</button>
+            </div>
+            <div id="objectList" class="object-list" hidden></div>
+            <form id="objectQueryForm" class="object-query">
+              <label class="visually-hidden" for="objectQueryInput">Dotaz na chybejici predmet</label>
+              <input id="objectQueryInput" type="text" placeholder="Napr. Vidis kytku u kresla?" disabled>
+              <button id="findObjectButton" type="submit" disabled>Doplnit cil</button>
+            </form>
+            <label class="prompt-editor" for="semanticPromptInput">
+              <span>Upravitelne zadani pro model</span>
+              <textarea id="semanticPromptInput" rows="5" placeholder="Vyberte predmety, nebo sem napiste vlastni presne zadani." disabled></textarea>
+            </label>
+            <button id="removeSelectedObjectsButton" class="primary" type="button" disabled>Odstranit vybrane</button>
+          </section>
+          <section class="marker-planner" aria-label="Plan podle znacek ve fotce">
+            <div class="object-picker-header">
+              <div>
+                <strong>Plan podle znacek ve fotce</strong>
+                <p>Kliknete do pracovni fotky: cervena znacka urci objekt k odstraneni, modra znacka objekt k ponechani.</p>
+              </div>
+              <div class="marker-tools" role="group" aria-label="Nastroje znaceni">
+                <button id="removeMarkModeButton" class="mark-mode active" type="button" disabled>Odstranit</button>
+                <button id="keepMarkModeButton" class="mark-mode keep" type="button" disabled>Ponechat</button>
+                <button id="clearMarksButton" type="button" disabled>Smazat znacky</button>
+              </div>
+            </div>
+            <div id="markerList" class="marker-list" hidden></div>
+            <button id="createPlanButton" class="primary" type="button" disabled>Vytvorit plan upravy</button>
+            <label class="prompt-editor" for="editPlanInput">
+              <span>Plan upravy pro model</span>
+              <textarea id="editPlanInput" rows="8" placeholder="Tady se objevi plan. Muzete ho upravit, nebo se doptat modelem nize." disabled></textarea>
+            </label>
+            <form id="planQuestionForm" class="object-query">
+              <label class="visually-hidden" for="planQuestionInput">Dotaz nebo uprava planu</label>
+              <input id="planQuestionInput" type="text" placeholder="Napr. Ponech lustr a okna, odstran jen skrin vpravo." disabled>
+              <button id="revisePlanButton" type="submit" disabled>Upravit plan</button>
+            </form>
+            <button id="runPlanButton" class="primary" type="button" disabled>Spustit podle planu</button>
+          </section>
+          <div id="chatThread" class="chat-thread" aria-live="polite">
+            <p class="chat-message assistant">Nahrajte fotku. Muzete vybrat rozpoznane predmety, nebo kliknout znacky do pracovni fotky a nechat model vytvorit plan upravy.</p>
+          </div>
+        </section>
+
         <div class="actions">
-          <button id="removeButton" class="primary" type="button" disabled>Vymazat nabytek</button>
-          <button id="shareButton" type="button" disabled>Sdilet / ulozit</button>
-          <a id="downloadButton" class="download disabled" href="#" download>Stahnout vysledek</a>
+          <div class="actions-primary">
+            <button id="removeButton" class="primary" type="button" disabled>Odstranit vsechen nabytek</button>
+            <button id="cleanRoomButton" class="experimental" type="button" disabled>Uklidit pokoj</button>
+            <button id="hidePrivateButton" class="experimental" type="button" disabled>Skryt osobni veci</button>
+            <button id="enhanceButton" class="experimental" type="button" disabled>Profesionalni tuning</button>
+            <button id="webQualityButton" class="experimental" type="button" disabled>Webova kvalita</button>
+          </div>
+          <div class="actions-secondary">
+            <button id="cancelButton" type="button" disabled>Storno</button>
+            <button id="undoButton" type="button" disabled>Krok zpet</button>
+            <button id="shareButton" type="button" disabled>Sdilet / ulozit</button>
+            <a id="downloadButton" class="download disabled" href="#" download>Stahnout vysledek</a>
+          </div>
         </div>
 
         <div class="preview-grid">
           <figure class="preview">
-            <figcaption>Puvodni fotka</figcaption>
+            <figcaption>
+              <span>Puvodni fotka</span>
+            </figcaption>
             <div class="image-frame empty" id="originalFrame">
               <img id="originalImage" alt="Puvodni fotka mistnosti">
               <span>Neni nahrana fotka</span>
@@ -42,9 +113,14 @@
           </figure>
 
           <figure class="preview">
-            <figcaption>Bez nabytku</figcaption>
+            <div class="working-header">
+              <figcaption>
+                <span>Pracovni fotka / vysledek</span>
+              </figcaption>
+            </div>
             <div class="image-frame empty" id="resultFrame">
-              <img id="resultImage" alt="Fotka mistnosti bez nabytku">
+              <img id="resultImage" alt="Pracovni fotka mistnosti">
+              <canvas id="markerCanvas" class="marker-canvas" aria-label="Znacky ve fotce"></canvas>
               <div id="spinner" class="spinner" hidden></div>
               <span id="resultPlaceholder">Vysledek se zobrazi tady</span>
             </div>
