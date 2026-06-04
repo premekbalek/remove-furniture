@@ -321,7 +321,8 @@ async function handleRemoveFurniture(req, res) {
   }
 
   const operation = normalizeEditOperation(payload.operation);
-  const outputFormat = operation === "web-quality" ? "png" : "jpeg";
+  const isDraft = payload.draft === true;
+  const outputFormat = isDraft ? "jpeg" : "png";
   const base64 = String(imageData).replace(/^data:image\/[a-z0-9.+-]+;base64,/i, "");
   const imageBuffer = Buffer.from(base64, "base64");
   let maskBuffer = null;
@@ -332,7 +333,6 @@ async function handleRemoveFurniture(req, res) {
     }
     maskBuffer = Buffer.from(String(maskData).replace(/^data:image\/png;base64,/i, ""), "base64");
   }
-  const isDraft = payload.draft === true;
   const size = supportedImageSize(Number(width), Number(height), isDraft, operation);
   const extension = outputFormat === "jpeg" ? "jpg" : outputFormat;
   const safeName = sanitizeFileName(fileName || `mistnost.${inputFormat === "jpeg" ? "jpg" : inputFormat}`);
